@@ -98,12 +98,18 @@ Prérequis (une seule fois) : Inno Setup 6 :
 winget install -e --id JRSoftware.InnoSetup
 ```
 
-Puis générez l’installateur :
+Par défaut, la commande construit l’édition démo avec 18 élèves et 25 paiements :
 
 ```powershell
 tools\build_installer.bat
 ```
 
-Le fichier obtenu, `output\EduPaie-Setup-1.0.0.exe`, se copie sur n’importe quel PC Windows 10/11 (clé USB, partage réseau…) : double-clic, choix du dossier d’installation, terminé. Aucun droit administrateur n’est requis (installation par utilisateur) et le dossier d’installation est librement choisissable — utile si le disque C: est saturé.
+Pour générer une édition vierge, destinée au déploiement dans une école :
+
+```powershell
+tools\build_installer.bat clean
+```
+
+Les installateurs sont créés dans `output/` : `EduPaie-Setup-1.0.0.exe` pour la démo et `EduPaie-Setup-1.0.0-vierge.exe` pour l’édition vierge. Ils s’installent sur Windows 10/11 sans droit administrateur; le dossier d’installation peut être choisi dans l’assistant.
 
 À la désinstallation, les données scolaires (`%APPDATA%\EduPaie\edupaie.db`) sont **conservées** : réinstaller EduPaie les retrouve.

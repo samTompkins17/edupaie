@@ -1,27 +1,44 @@
 ; ============================================================
 ; EduPaie — Script Inno Setup
-; Génère l'installateur Windows : dist/EduPaie-Setup-<version>.exe
+; Génère l'installateur Windows :
+;   édition démo (défaut) : output/EduPaie-Setup-<version>.exe
+;   édition vierge        : output/EduPaie-Setup-<version>-vierge.exe
 ;
 ; Compilation :
-;   tools\build_installer.bat
+;   tools\build_installer.bat            (édition démo)
+;   tools\build_installer.bat clean      (édition base vierge, déploiement école)
 ;   ou directement :
-;   "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" tools\installer.iss
+;   "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" /DEduPaieEdition=clean tools\installer.iss
 ;
 ; Caractéristiques :
 ;   - installation par utilisateur (aucun droit administrateur requis)
-;   - dossier : %LOCALAPPDATA%\Programs\EduPaie
+;   - dossier : %LOCALAPPDATA%\Programs\EduPaie (choisissable dans l'assistant)
 ;   - raccourcis : menu Démarrer + bureau (optionnel, décochable)
 ;   - désinstalleur avec entrée « Applications et fonctionnalités »
 ;   - les données (%APPDATA%\EduPaie) sont conservées à la désinstallation
 ; ============================================================
+
+; Édition passée par build_installer.bat ou /DEduPaieEdition=...
+#ifndef EduPaieEdition
+  #define EduPaieEdition "demo"
+#endif
 
 #define MyAppName "EduPaie"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "EduPaie"
 #define MyAppExeName "EduPaie.exe"
 
+#if EduPaieEdition == "clean"
+  ; Identité distincte : les deux éditions peuvent être installées côte à côte
+  #define MyAppId "{{9C1B4E7A-5F2D-4A83-B6C9-1E4A7D0F52B8}"
+  #define SetupSuffix "-vierge"
+#else
+  #define MyAppId "{{7E3F9C42-8D1A-4B6E-9C5F-2A4E8D7B1F30}"
+  #define SetupSuffix ""
+#endif
+
 [Setup]
-AppId={{7E3F9C42-8D1A-4B6E-9C5F-2A4E8D7B1F30}
+AppId={#MyAppId}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
@@ -33,7 +50,7 @@ DisableProgramGroupPage=yes
 ; Sortie dans output/ (dist/ est surveille par l'antivirus lors de la creation
 ; du fichier : output/ evite l'erreur EndUpdateResource)
 OutputDir=..\output
-OutputBaseFilename=EduPaie-Setup-{#MyAppVersion}
+OutputBaseFilename=EduPaie-Setup-{#MyAppVersion}{#SetupSuffix}
 ; Icône et bannière de l'installateur
 SetupIconFile=..\resources\icon.ico
 ; Installation par utilisateur : aucun privilège requis
@@ -48,7 +65,7 @@ MinVersion=10.0
 ; Pas de redémarrage automatique de l'application à la fin
 ; Le désinstalleur est placé dans {app} (suit le dossier choisi par
 ; l'utilisateur, important si le lecteur par défaut est saturé)
-UninstallDisplayName={#MyAppName} {#MyAppVersion}
+UninstallDisplayName={#MyAppName} {#MyAppVersion}{#SetupSuffix}
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
