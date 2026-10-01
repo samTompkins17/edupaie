@@ -140,21 +140,6 @@ def _enrichir_eleve(eleve: dict, somme_payee: int, nombre_paiements: int) -> dic
     return eleve
 
 
-def calculer_statut(id_eleve: int) -> str:
-    """Détermine le statut de paiement d'un élève.
-
-    - 'Soldé' : solde = 0
-    - 'Partiellement payé' : solde > 0 et au moins un paiement
-    - 'Non payé' : aucun paiement
-
-    Returns:
-        La chaîne du statut
-    """
-    solde = calculer_solde(id_eleve)
-    nombre_paiements = paiement_repository.compter_par_eleve(id_eleve)
-    return _determiner_statut(solde, nombre_paiements)
-
-
 def obtenir_eleve(id_eleve: int) -> dict:
     """Retourne un élève enrichi avec son solde et son statut.
 
@@ -233,18 +218,3 @@ def obtenir_statistiques() -> dict:
         "nombre_non_payes": nb_non_payes,
         "taux_recouvrement": round(taux, 1),
     }
-
-
-def lister_eleves_par_statut(statut_filtre: str = "") -> list[dict]:
-    """Retourne la liste des élèves filtrée par statut de paiement (F6).
-
-    Args:
-        statut_filtre: 'Soldé', 'Partiellement payé', 'Non payé', ou '' (tous)
-
-    Returns:
-        Liste d'élèves triée par défaut (élèves avec reste à payer en priorité)
-    """
-    tous = lister_eleves()
-    if statut_filtre:
-        tous = [e for e in tous if e["statut"] == statut_filtre]
-    return tous

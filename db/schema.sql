@@ -1,6 +1,5 @@
 -- =============================================================
 -- EduPaie - Script de création de la base de données
--- Généré depuis docs/mld.mmd
 -- =============================================================
 
 -- Table des élèves

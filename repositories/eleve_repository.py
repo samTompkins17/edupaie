@@ -93,22 +93,6 @@ def obtenir_par_id(id_eleve: int) -> dict | None:
         conn.close()
 
 
-def lister_tous() -> list[dict]:
-    """Retourne la liste de tous les élèves, triés par nom puis prénom.
-
-    Returns:
-        Liste de dictionnaires (un par élève)
-    """
-    conn = get_connection()
-    try:
-        curseur = conn.execute(
-            "SELECT * FROM eleve ORDER BY nom, prenom"
-        )
-        return [dict(ligne) for ligne in curseur.fetchall()]
-    finally:
-        conn.close()
-
-
 def rechercher(terme: str = "", classe_filtre: str = "") -> list[dict]:
     """Recherche des élèves par nom/prénom et/ou filtre par classe.
 
@@ -155,19 +139,5 @@ def lister_classes() -> list[str]:
             "SELECT DISTINCT classe FROM eleve ORDER BY classe"
         )
         return [ligne["classe"] for ligne in curseur.fetchall()]
-    finally:
-        conn.close()
-
-
-def compter() -> int:
-    """Retourne le nombre total d'élèves dans la base.
-
-    Returns:
-        Nombre d'élèves (entier)
-    """
-    conn = get_connection()
-    try:
-        curseur = conn.execute("SELECT COUNT(*) AS total FROM eleve")
-        return curseur.fetchone()["total"]
     finally:
         conn.close()

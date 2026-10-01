@@ -134,8 +134,3 @@ def enregistrer_paiement(id_eleve: int, montant: int, date_paiement: str, mode_p
         raise ValueError(f"Erreur d'intégrité de la base de données : {e}")
     finally:
         conn.close()
-
-
-def lister_paiements_eleve(id_eleve: int) -> list[dict]:
-    """Retourne l'historique complet des paiements d'un élève."""
-    return paiement_repository.lister_par_eleve(id_eleve)
