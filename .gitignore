@@ -2,9 +2,11 @@
 __pycache__/
 build/
 dist/
+output/
 *.spec
 !EduPaie.spec
 *.log
 .freebuff/
 *.db
 !data/edupaie.db
+.build_tmp/
