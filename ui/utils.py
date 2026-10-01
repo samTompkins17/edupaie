@@ -6,27 +6,10 @@ de couleurs utilisées dans toute l'interface. La palette provient du
 design system (`ui.theme`) afin de garantir une cohérence globale.
 """
 
-from ui.theme import COULEUR_STATUT, FOND_STATUT, PALETTE
-
-# --- Couleurs des statuts de paiement ---
-COULEUR_SOLDE = COULEUR_STATUT["Soldé"]        # Vert → Soldé
-COULEUR_PARTIEL = COULEUR_STATUT["Partiellement payé"]  # Orange → Partiel
-COULEUR_NON_PAYE = COULEUR_STATUT["Non payé"]  # Rouge → Non payé
-
-# --- Couleurs de la marque (raccourcis pratiques) ---
-COULEUR_PRIMAIRE = PALETTE["primary"]
-COULEUR_PRIMAIRE_FONCE = PALETTE["primaryDark"]
-COULEUR_TEXTE = PALETTE["text"]
-COULEUR_TEXTE_MUET = PALETTE["textMuted"]
-COULEUR_SURFACE = PALETTE["surface"]
-COULEUR_FOND = PALETTE["bg"]
-COULEUR_BORDURE = PALETTE["border"]
+from ui.theme import COULEUR_STATUT, PALETTE
 
 __all__ = [
-    "COULEUR_SOLDE", "COULEUR_PARTIEL", "COULEUR_NON_PAYE",
-    "COULEUR_PRIMAIRE", "COULEUR_PRIMAIRE_FONCE", "COULEUR_TEXTE",
-    "COULEUR_TEXTE_MUET", "COULEUR_SURFACE", "COULEUR_FOND",
-    "COULEUR_BORDURE", "FOND_STATUT", "PALETTE",
+    "PALETTE",
     "formater_montant", "formater_date_affichage", "couleur_statut",
     "libelle_mode_paiement", "initiales",
 ]

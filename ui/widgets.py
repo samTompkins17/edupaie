@@ -7,12 +7,9 @@ Parti pris : sobriété — pas d'icône décorative, pas de liseré coloré ;
 la couleur n'intervient que pour la sémantique (statut de paiement).
 """
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget,
 )
-
-from ui.theme import FOND_STATUT, PALETTE, COULEUR_STATUT, creer_carte
 
 
 def separateur_horizontal() -> QFrame:
@@ -21,26 +18,6 @@ def separateur_horizontal() -> QFrame:
     trait.setObjectName("separator")
     trait.setFixedHeight(1)
     return trait
-
-
-class BadgeStatut(QLabel):
-    """Pastille colorée affichant un statut de paiement (couleur sémantique)."""
-
-    def __init__(self, statut: str = "Non payé", parent=None):
-        super().__init__(parent)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.set_statut(statut)
-
-    def set_statut(self, statut: str):
-        """Met à jour le texte et la couleur du badge."""
-        self.setText(f"  {statut}  ")
-        fond = FOND_STATUT.get(statut, PALETTE["surfaceAlt"])
-        teinte = COULEUR_STATUT.get(statut, PALETTE["textMuted"])
-        self.setStyleSheet(
-            f"background-color: {fond}; color: {teinte};"
-            "border-radius: 9px; padding: 4px 6px;"
-            "font-size: 11px; font-weight: 700;"
-        )
 
 
 class CarteKPI(QFrame):
@@ -119,16 +96,3 @@ class EnTetePage(QWidget):
     def ajouter_action_gauche(self, widget: QWidget):
         """Ajoute un widget à gauche, avant le titre."""
         self._layout.insertWidget(0, widget)
-
-
-def carte_simple(titre: str = "") -> tuple[QFrame, QVBoxLayout]:
-    """Crée une carte blanche avec un titre optionnel et retourne son layout."""
-    cadre = creer_carte()
-    layout = QVBoxLayout(cadre)
-    layout.setContentsMargins(16, 14, 16, 14)
-    layout.setSpacing(10)
-    if titre:
-        lbl = QLabel(titre)
-        lbl.setObjectName("sectionTitle")
-        layout.addWidget(lbl)
-    return cadre, layout

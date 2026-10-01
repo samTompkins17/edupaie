@@ -24,7 +24,7 @@ Conventions d'`objectName` utilisables dans les écrans :
 
 from string import Template
 
-from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
+from PySide6.QtGui import QFont, QIcon, QPixmap
 from PySide6.QtWidgets import QFrame, QWidget
 
 
@@ -600,11 +600,6 @@ def activer_fond_stylise(widget: QWidget):
 
     widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     return widget
-
-
-def couleur(cle: str) -> QColor:
-    """Retourne une QColor depuis la palette (clé = nom de la teinte)."""
-    return QColor(PALETTE.get(cle, cle))
 
 
 def pixmap_logo(taille: int = 256) -> QPixmap:

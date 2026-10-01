@@ -5,10 +5,6 @@ Le logo est défini une seule fois dans `ui/logo.py` (dessin vectoriel
 QPainter). Ce script le rend en plusieurs tailles et produit :
 
     resources/logo.png        → 512 px (affichages généraux)
-    resources/logo_256.png    → 256 px
-    resources/logo_128.png    → 128 px
-    resources/logo_48.png     →  48 px
-    resources/logo_32.png     →  32 px
     resources/icon.ico        → icône multi-tailles pour l'exécutable
 
 Usage :
@@ -35,7 +31,7 @@ from ui.logo import dessiner_logo
 DOSSIER_RESSOURCES = os.path.join(RACINE, "resources")
 
 #: Tailles PNG exportées
-TAILLES_PNG = [512, 256, 128, 48, 32]
+TAILLES_PNG = [512]
 #: Tailles intégrées dans le fichier .ico (Windows)
 TAILLES_ICO = [16, 24, 32, 48, 64, 128, 256]
 
@@ -104,28 +100,6 @@ def ecrire_ico(chemin: str, tailles: list[int]):
         f"  [OK] {os.path.relpath(chemin, RACINE)} "
         f"({len(pngs)} tailles : {', '.join(str(t) for t in tailles)})"
     )
-
-
-def ecrire_svg(chemin: str, taille: int = 512):
-    """Exporte le logo en SVG vectoriel (si le module QtSvg est disponible)."""
-    try:
-        from PySide6.QtSvg import QSvgGenerator
-    except ImportError:
-        print("  [!] QtSvg indisponible : export SVG ignoré.")
-        return
-
-    generateur = QSvgGenerator()
-    generateur.setFileName(chemin)
-    generateur.setSize(QSize(taille, taille))
-    generateur.setViewBox(QRect(0, 0, taille, taille))
-    generateur.setTitle("Logo EduPaie")
-    generateur.setDescription("Logo vectoriel de l'application EduPaie")
-
-    painter = QPainter(generateur)
-    dessiner_logo(painter, taille)
-    painter.end()
-
-    print(f"  [OK] {os.path.relpath(chemin, RACINE)} ({taille}x{taille})")
 
 
 def main():
