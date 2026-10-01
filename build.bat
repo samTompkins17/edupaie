@@ -44,7 +44,7 @@ if exist "dist\EduPaie.exe" (
         goto :erreur
     )
 )
-"%PY%" -m PyInstaller EduPaie.spec --noconfirm --clean
+"%PY%" -m PyInstaller EduPaie.spec --noconfirm --clean --workpath ".venv\pyinstaller-work" --distpath "dist"
 if errorlevel 1 goto :erreur
 
 echo.

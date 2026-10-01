@@ -1,13 +1,23 @@
 @echo off
 REM ============================================================
 REM EduPaie - Build complet : exe PyInstaller + installateur Inno Setup
-REM Usage : tools\build_installer.bat
+REM Usage : tools\build_installer.bat [demo|clean]
 REM Prerequis : Inno Setup 6 (winget install -e --id JRSoftware.InnoSetup)
 REM Sortie  : output\EduPaie-Setup-<version>.exe
 REM ============================================================
 setlocal
 pushd "%~dp0.."
 cd
+
+set "EDITION=%~1"
+if not defined EDITION set "EDITION=demo"
+if /I not "%EDITION%"=="demo" if /I not "%EDITION%"=="clean" (
+    echo Usage : tools\build_installer.bat [demo^|clean]
+    popd
+    exit /b 1
+)
+
+set "EDUPAIE_DATA=%EDITION%"
 
 set ISCC="%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
 if not exist %ISCC% set ISCC="%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
@@ -26,14 +36,17 @@ call "%CD%\build.bat"
 if errorlevel 1 goto :erreur
 
 echo.
-echo [2/2] Compilation de l'installateur...
-%ISCC% "%CD%\tools\installer.iss"
+echo [2/2] Compilation de l'installateur (%EDITION%)...
+%ISCC% /DEduPaieEdition=%EDITION% "%CD%\tools\installer.iss"
 if errorlevel 1 goto :erreur
 
-echo.
-echo ============================================
-echo  Installateur genere : output\EduPaie-Setup-1.0.0.exe
-echo ============================================
+if /I "%EDITION%"=="clean" (
+    echo.
+    echo Installateur genere : output\EduPaie-Setup-1.0.0-vierge.exe
+) else (
+    echo.
+    echo Installateur genere : output\EduPaie-Setup-1.0.0.exe
+)
 popd
 exit /b 0
 
