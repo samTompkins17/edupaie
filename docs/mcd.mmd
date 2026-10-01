@@ -1,0 +1,10 @@
+%% MCD (Merise) - EduPaie
+%% Entites = rectangles, association = ovale, cardinalites sur les liens
+%% Identifiants soulignes
+flowchart LR
+    ELEVE["<b>ELEVE</b><hr/><u>id_eleve</u><br/>nom<br/>prenom<br/>classe<br/>annee_scolaire<br/>total_du"]
+    EFFECTUER(["<b>EFFECTUER</b>"])
+    PAIEMENT["<b>PAIEMENT</b><hr/><u>id_paiement</u><br/>montant<br/>date_paiement<br/>mode_paiement<br/>numero_recu<br/>solde_apres"]
+
+    ELEVE ---|"0,N"| EFFECTUER
+    EFFECTUER ---|"1,1"| PAIEMENT
