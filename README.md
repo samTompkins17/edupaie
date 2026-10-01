@@ -1,3 +1,4 @@
+# edupaie
 # EduPaie — Gestion des paiements scolaires
 
 Application de bureau (Desktop) sous **Python**, **PySide6** et **SQLite3** permettant la gestion complète des frais de scolarité, l'enregistrement des versements échelonnés, le suivi des soldes en temps réel et la génération de reçus numérotés certifiés en PDF.
