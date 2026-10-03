@@ -15,6 +15,9 @@ import os
 import shutil
 import time
 
+# Import sous forme de module (et non `from ... import`) : get_data_dir est
+# résolu au moment de l'appel, ce qui laisse les tests le remplacer.
+import db.connection
 from db.connection import get_connection
 from utils.paths import resource_path
 
@@ -84,8 +87,6 @@ def initialiser_base():
 
     if schema_obsolete:
         # Base d'une ancienne version : sauvegarder puis recréer à neuf
-        import db.connection
-
         chemin_base = os.path.join(db.connection.get_data_dir(), "edupaie.db")
         _archiver_base_obsolete(chemin_base)
         os.remove(chemin_base)

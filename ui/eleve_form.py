@@ -50,7 +50,7 @@ class FormulaireEleve(QDialog):
         layout.setSpacing(16)
 
         # --- En-tête ---
-        titre = QLabel(self.windowTitle().split(" — ")[0])
+        titre = QLabel(self.windowTitle())
         titre.setObjectName("pageTitle")
         layout.addWidget(titre)
 
