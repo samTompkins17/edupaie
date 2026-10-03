@@ -15,6 +15,7 @@ Vérifie l'ensemble des règles métier critiques et critères d'acceptation :
 import unittest
 import os
 import tempfile
+import time
 from datetime import date, timedelta
 from unittest.mock import patch
 
@@ -262,6 +263,98 @@ class TestEduPaie(unittest.TestCase):
                             contenu,
                             f"{nom_fic} dans {dossier} ne doit pas importer ui",
                         )
+
+
+    def test_13_performance_liste_eleves(self):
+        """Vérifie les performances avec 2 000 élèves / 12 000 paiements (perf/liste-eleves).
+
+        Avant optimisation, lister_eleves exécutait 2 requêtes par élève
+        (problème N+1) : plus de 16 s pour 2 000 élèves. La requête unique
+        avec LEFT JOIN doit répondre en moins de 0,3 s, et les statistiques
+        agrégées en moins de 0,2 s.
+        """
+        # Base isolée dans un dossier temporaire pour ne pas perturber les autres tests
+        with tempfile.TemporaryDirectory() as dossier_temp:
+            with patch("db.connection.get_data_dir", return_value=dossier_temp):
+                reinitialiser_base()
+                conn = get_connection()
+                try:
+                    # 2 000 élèves répartis dans 4 classes, 300 000 FCFA dus chacun
+                    classes = ["6ème", "5ème", "4ème", "3ème"]
+                    eleves = [
+                        (f"NOM_{i:04d}", f"Prenom_{i:04d}", classes[i % 4],
+                         "2025-2026", 300000)
+                        for i in range(1, 2001)
+                    ]
+                    conn.execute("DELETE FROM paiement")
+                    conn.execute("DELETE FROM eleve")
+                    conn.executemany(
+                        "INSERT INTO eleve (nom, prenom, classe, annee_scolaire, "
+                        "total_du) VALUES (?, ?, ?, ?, ?)",
+                        eleves,
+                    )
+                    ids = [r["id_eleve"] for r in conn.execute(
+                        "SELECT id_eleve FROM eleve ORDER BY id_eleve"
+                    ).fetchall()]
+
+                    # 12 000 paiements : 6 versements de 25 000 par élève
+                    modes = ["especes", "cheque", "virement", "mobile_money"]
+                    paiements = [
+                        (ids[(i - 1) % len(ids)], 25000, "2025-10-15",
+                         modes[i % 4], f"REC-2025-{90000 + i:05d}", 150000)
+                        for i in range(1, 12001)
+                    ]
+                    conn.executemany(
+                        "INSERT INTO paiement (id_eleve, montant, date_paiement, "
+                        "mode_paiement, numero_recu, solde_apres) VALUES (?,?,?,?,?,?)",
+                        paiements,
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+
+                # Premier appel hors mesure : chauffe le cache de la base
+                eleve_service.lister_eleves()
+
+                # Mesure de lister_eleves : requête unique, sous 0,3 s
+                t0 = time.perf_counter()
+                resultat = eleve_service.lister_eleves()
+                duree_lister = time.perf_counter() - t0
+                self.assertLess(
+                    duree_lister, 0.3,
+                    f"lister_eleves trop lent : {duree_lister:.3f} s",
+                )
+
+                # Mesure des statistiques : requêtes agrégées, sous 0,2 s
+                t0 = time.perf_counter()
+                stats = eleve_service.obtenir_statistiques()
+                duree_stats = time.perf_counter() - t0
+                self.assertLess(
+                    duree_stats, 0.2,
+                    f"obtenir_statistiques trop lent : {duree_stats:.3f} s",
+                )
+
+                # Mêmes résultats qu'avant optimisation : tri, soldes, statuts
+                self.assertEqual(len(resultat), 2000)
+                premier = resultat[0]
+                self.assertEqual(premier["nom"], "NOM_0001")  # tri alphabétique
+                # 6 versements de 25 000 -> 150 000 payés, solde 150 000
+                self.assertEqual(premier["somme_payee"], 150000)
+                self.assertEqual(premier["solde"], 150000)
+                self.assertEqual(premier["statut"], "Partiellement payé")
+
+                # Filtre par classe : 500 élèves par classe
+                sixiemes = eleve_service.lister_eleves(classe_filtre="6ème")
+                self.assertEqual(len(sixiemes), 500)
+                self.assertTrue(all(e["classe"] == "6ème" for e in sixiemes))
+
+                # Statistiques globales cohérentes avec le jeu de données
+                self.assertEqual(stats["nombre_eleves"], 2000)
+                self.assertEqual(stats["total_encaisse"], 12000 * 25000)
+                self.assertEqual(
+                    stats["total_restant_du"], 2000 * 300000 - 12000 * 25000
+                )
+                self.assertEqual(stats["nombre_partiellement_payes"], 2000)
 
 
 if __name__ == "__main__":

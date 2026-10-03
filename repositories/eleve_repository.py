@@ -137,35 +137,94 @@ def obtenir_total_du(id_eleve: int,
 
 
 def rechercher(terme: str = "", classe_filtre: str = "") -> list[dict]:
-    """Recherche des élèves par nom/prénom et/ou filtre par classe.
+    """Recherche des élèves avec calcul direct du cumul des paiements.
+
+    Requête unique avec LEFT JOIN pour éviter les N+1 requêtes (optimisation F1/F6).
 
     Args:
-        terme: Texte à chercher dans le nom ou le prénom (LIKE %terme%)
+        terme: Texte à chercher dans le nom ou le prénom
         classe_filtre: Si non vide, filtre uniquement cette classe
 
     Returns:
-        Liste de dictionnaires correspondant aux critères
+        Liste de dictionnaires avec les colonnes élève + somme_payee + nb_paiements
     """
     conn = get_connection()
     try:
-        requete = "SELECT * FROM eleve WHERE 1=1"
+        requete = (
+            "SELECT e.id_eleve, e.nom, e.prenom, e.classe, e.annee_scolaire, e.total_du, "
+            "COALESCE(SUM(p.montant), 0) AS somme_payee, "
+            "COUNT(p.id_paiement) AS nb_paiements "
+            "FROM eleve e "
+            "LEFT JOIN paiement p ON p.id_eleve = e.id_eleve "
+            "WHERE 1=1"
+        )
         parametres = []
 
         # Filtre par recherche textuelle (nom ou prénom)
         if terme:
-            requete += " AND (nom LIKE ? OR prenom LIKE ?)"
+            requete += " AND (e.nom LIKE ? OR e.prenom LIKE ?)"
             motif = f"%{terme}%"
             parametres.extend([motif, motif])
 
         # Filtre par classe
         if classe_filtre:
-            requete += " AND classe = ?"
+            requete += " AND e.classe = ?"
             parametres.append(classe_filtre)
 
-        requete += " ORDER BY nom, prenom"
+        requete += " GROUP BY e.id_eleve ORDER BY e.nom, e.prenom"
 
         curseur = conn.execute(requete, parametres)
         return [dict(ligne) for ligne in curseur.fetchall()]
+    finally:
+        conn.close()
+
+
+def obtenir_statistiques_globales() -> dict:
+    """Calcule les indicateurs financiers et démographiques globaux en requête agrégée unique.
+
+    Returns:
+        Dictionnaire des agrégats pour le tableau de bord
+    """
+    conn = get_connection()
+    try:
+        requete = """
+            SELECT 
+                COUNT(e.id_eleve) AS nombre_eleves,
+                COALESCE(SUM(e.total_du), 0) AS total_du_global,
+                COALESCE(SUM(sp.somme_payee), 0) AS total_encaisse,
+                COALESCE(SUM(CASE WHEN e.total_du = COALESCE(sp.somme_payee, 0) THEN 1 ELSE 0 END), 0) AS nombre_soldes,
+                COALESCE(SUM(CASE WHEN COALESCE(sp.somme_payee, 0) > 0 AND COALESCE(sp.somme_payee, 0) < e.total_du THEN 1 ELSE 0 END), 0) AS nombre_partiellement_payes,
+                COALESCE(SUM(CASE WHEN COALESCE(sp.nb_paiements, 0) = 0 THEN 1 ELSE 0 END), 0) AS nombre_non_payes
+            FROM eleve e
+            LEFT JOIN (
+                SELECT id_eleve, SUM(montant) AS somme_payee, COUNT(id_paiement) AS nb_paiements
+                FROM paiement
+                GROUP BY id_eleve
+            ) sp ON sp.id_eleve = e.id_eleve
+        """
+        curseur = conn.execute(requete)
+        ligne = curseur.fetchone()
+
+        nombre_eleves = ligne["nombre_eleves"] or 0
+        total_du_global = ligne["total_du_global"] or 0
+        total_encaisse = ligne["total_encaisse"] or 0
+        total_restant_du = total_du_global - total_encaisse
+        nombre_soldes = ligne["nombre_soldes"] or 0
+        nombre_partiellement_payes = ligne["nombre_partiellement_payes"] or 0
+        nombre_non_payes = ligne["nombre_non_payes"] or 0
+        nombre_non_soldes = nombre_partiellement_payes + nombre_non_payes
+        taux_recouvrement = round((total_encaisse / total_du_global * 100), 1) if total_du_global > 0 else 0.0
+
+        return {
+            "nombre_eleves": nombre_eleves,
+            "total_encaisse": total_encaisse,
+            "total_restant_du": total_restant_du,
+            "nombre_non_soldes": nombre_non_soldes,
+            "nombre_soldes": nombre_soldes,
+            "nombre_partiellement_payes": nombre_partiellement_payes,
+            "nombre_non_payes": nombre_non_payes,
+            "taux_recouvrement": taux_recouvrement,
+        }
     finally:
         conn.close()
 

@@ -163,6 +163,9 @@ def obtenir_eleve(id_eleve: int) -> dict:
 def lister_eleves(terme: str = "", classe_filtre: str = "") -> list[dict]:
     """Retourne la liste des élèves enrichie du solde et du statut.
 
+    Les cumuls de paiements sont calculés directement par la requête SQL
+    du repository (évite les N requêtes par élève).
+
     Args:
         terme: Texte de recherche (nom ou prénom)
         classe_filtre: Filtre par classe (vide = toutes)
@@ -172,9 +175,8 @@ def lister_eleves(terme: str = "", classe_filtre: str = "") -> list[dict]:
     """
     eleves = eleve_repository.rechercher(terme, classe_filtre)
     for eleve in eleves:
-        somme = paiement_repository.somme_paiements(eleve["id_eleve"])
-        nb = paiement_repository.compter_par_eleve(eleve["id_eleve"])
-        _enrichir_eleve(eleve, somme, nb)
+        eleve["solde"] = eleve["total_du"] - eleve["somme_payee"]
+        eleve["statut"] = _determiner_statut(eleve["solde"], eleve["nb_paiements"])
     return eleves
 
 
@@ -186,36 +188,9 @@ def lister_classes() -> list[str]:
 def obtenir_statistiques() -> dict:
     """Calcule les indicateurs clés pour le tableau de bord (F6).
 
+    Délègue à une requête agrégée SQL unique pour des performances instantanées.
+
     Returns:
-        Dictionnaire avec :
-        - nombre_eleves: nombre total d'élèves
-        - total_encaisse: somme de tous les paiements effectués
-        - total_restant_du: somme de tous les soldes restants
-        - nombre_non_soldes: nombre d'élèves dont le solde > 0
-        - nombre_soldes: nombre d'élèves dont le solde = 0
-        - nombre_partiellement_payes: nombre d'élèves partiellement réglés
-        - nombre_non_payes: nombre d'élèves n'ayant encore rien versé
-        - taux_recouvrement: pourcentage encaissé par rapport au total dû global
+        Dictionnaire avec les indicateurs obligatoires du tableau de bord
     """
-    tous = lister_eleves()
-    total_encaisse = paiement_repository.total_encaisse()
-    total_restant = sum(e["solde"] for e in tous)
-    total_global_du = total_encaisse + total_restant
-
-    nb_soldes = sum(1 for e in tous if e["statut"] == STATUT_SOLDE)
-    nb_partiels = sum(1 for e in tous if e["statut"] == STATUT_PARTIEL)
-    nb_non_payes = sum(1 for e in tous if e["statut"] == STATUT_NON_PAYE)
-    non_soldes = nb_partiels + nb_non_payes
-
-    taux = (total_encaisse / total_global_du * 100) if total_global_du > 0 else 0.0
-
-    return {
-        "nombre_eleves": len(tous),
-        "total_encaisse": total_encaisse,
-        "total_restant_du": total_restant,
-        "nombre_non_soldes": non_soldes,
-        "nombre_soldes": nb_soldes,
-        "nombre_partiellement_payes": nb_partiels,
-        "nombre_non_payes": nb_non_payes,
-        "taux_recouvrement": round(taux, 1),
-    }
+    return eleve_repository.obtenir_statistiques_globales()
