@@ -93,6 +93,23 @@ def obtenir_par_id(id_eleve: int) -> dict | None:
         conn.close()
 
 
+def obtenir_par_id_avec_conn(id_eleve: int, conn) -> dict | None:
+    """Retourne un élève en utilisant une connexion existante (transaction).
+
+    Même logique que obtenir_par_id, mais participe à la transaction
+    ouverte par la couche service (pas de fermeture de connexion).
+
+    Args:
+        id_eleve: Identifiant de l'élève recherché
+        conn: Connexion SQLite fournie par l'appelant
+    """
+    curseur = conn.execute(
+        "SELECT * FROM eleve WHERE id_eleve = ?", (id_eleve,)
+    )
+    ligne = curseur.fetchone()
+    return dict(ligne) if ligne else None
+
+
 def rechercher(terme: str = "", classe_filtre: str = "") -> list[dict]:
     """Recherche des élèves par nom/prénom et/ou filtre par classe.
 

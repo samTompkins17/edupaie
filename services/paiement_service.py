@@ -69,68 +69,70 @@ def enregistrer_paiement(id_eleve: int, montant: int, date_paiement: str, mode_p
     valider_donnees_paiement(id_eleve, montant, date_paiement, mode_paiement)
     date_paiement = date_paiement.strip()
 
-    # 2. Transaction SQLite unique
-    conn = get_connection()
-    try:
-        with conn:
-            # Vérifier l'existence de l'élève
-            curseur = conn.execute(
-                "SELECT id_eleve, total_du FROM eleve WHERE id_eleve = ?",
-                (id_eleve,),
-            )
-            ligne_eleve = curseur.fetchone()
-            if not ligne_eleve:
-                raise ValueError(f"L'élève #{id_eleve} est introuvable.")
+    # 2. Transaction SQLite avec retry en cas de conflit de numéro de reçu
+    #    (deux fenêtres enregistrent un paiement au même instant)
+    MAX_TENTATIVES = 3
+    for tentative in range(1, MAX_TENTATIVES + 1):
+        conn = get_connection()
+        try:
+            with conn:
+                # Vérifier l'existence de l'élève via le repository
+                eleve = eleve_repository.obtenir_par_id_avec_conn(id_eleve, conn)
+                if not eleve:
+                    raise ValueError(f"L'élève #{id_eleve} est introuvable.")
 
-            total_du = ligne_eleve["total_du"]
+                total_du = eleve["total_du"]
 
-            # Calculer la somme déjà payée sous verrou de transaction
-            curseur = conn.execute(
-                "SELECT COALESCE(SUM(montant), 0) AS total_paye FROM paiement WHERE id_eleve = ?",
-                (id_eleve,),
-            )
-            total_paye = curseur.fetchone()["total_paye"]
-            solde_restant = total_du - total_paye
+                # Calculer la somme déjà payée sous verrou de transaction
+                total_paye = paiement_repository.somme_paiements_avec_conn(
+                    id_eleve, conn
+                )
+                solde_restant = total_du - total_paye
 
-            # RÈGLE MÉTIER CRITIQUE : Dépassement de solde interdit
-            if montant > solde_restant:
-                from ui.utils import formater_montant
-                raise ValueError(
-                    f"Paiement refusé : le montant saisi ({formater_montant(montant)}) "
-                    f"dépasse le solde restant dû ({formater_montant(solde_restant)}).\n"
-                    f"Le solde d'un élève ne peut jamais être négatif."
+                # RÈGLE MÉTIER CRITIQUE : Dépassement de solde interdit
+                if montant > solde_restant:
+                    raise ValueError(
+                        f"Paiement refusé : le montant saisi ({montant} FCFA) "
+                        f"dépasse le solde restant dû ({solde_restant} FCFA).\n"
+                        f"Le solde d'un élève ne peut jamais être négatif."
+                    )
+
+                # Calcul du solde après paiement
+                solde_apres = solde_restant - montant
+
+                # Génération du numéro de reçu pour l'année du paiement
+                annee = date_paiement[:4]
+                numero_recu = recu_service.generer_numero_recu(annee, conn=conn)
+
+                # Insertion du paiement
+                id_paiement = paiement_repository.inserer(
+                    id_eleve=id_eleve,
+                    montant=montant,
+                    date_paiement=date_paiement,
+                    mode_paiement=mode_paiement,
+                    numero_recu=numero_recu,
+                    solde_apres=solde_apres,
+                    conn=conn,
                 )
 
-            # Calcul du solde après paiement
-            solde_apres = solde_restant - montant
+            # Fin du bloc with conn : commit automatique
+            return {
+                "id_paiement": id_paiement,
+                "id_eleve": id_eleve,
+                "montant": montant,
+                "date_paiement": date_paiement,
+                "mode_paiement": mode_paiement,
+                "numero_recu": numero_recu,
+                "solde_apres": solde_apres,
+            }
 
-            # Génération du numéro de reçu pour l'année du paiement
-            annee = date_paiement[:4]
-            numero_recu = recu_service.generer_numero_recu(annee, conn=conn)
-
-            # Insertion du paiement
-            id_paiement = paiement_repository.inserer(
-                id_eleve=id_eleve,
-                montant=montant,
-                date_paiement=date_paiement,
-                mode_paiement=mode_paiement,
-                numero_recu=numero_recu,
-                solde_apres=solde_apres,
-                conn=conn,
-            )
-
-        # Fin du bloc with conn : commit automatique si aucune exception levée
-        return {
-            "id_paiement": id_paiement,
-            "id_eleve": id_eleve,
-            "montant": montant,
-            "date_paiement": date_paiement,
-            "mode_paiement": mode_paiement,
-            "numero_recu": numero_recu,
-            "solde_apres": solde_apres,
-        }
-
-    except sqlite3.IntegrityError as e:
-        raise ValueError(f"Erreur d'intégrité de la base de données : {e}")
-    finally:
-        conn.close()
+        except sqlite3.IntegrityError:
+            # Conflit de numéro de reçu (doublon) → réessayer
+            if tentative >= MAX_TENTATIVES:
+                raise ValueError(
+                    "Impossible d'attribuer un numéro de reçu unique après "
+                    f"{MAX_TENTATIVES} tentatives. Veuillez réessayer."
+                )
+            # Sinon on boucle pour régénérer un nouveau numéro
+        finally:
+            conn.close()
