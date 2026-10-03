@@ -30,6 +30,39 @@ def formater_date_affichage(date_iso: str) -> str:
     return f"{parties[2]}/{parties[1]}/{parties[0]}"
 
 
+def annee_debut_scolaire(annee_scolaire: str) -> int:
+    """Première année d'une année scolaire au format AAAA-AAAA.
+
+    Exemple : '2025-2026' → 2025 ; '2025' → 2025.
+
+    Centralise un parsing utilisé à la fois par la validation métier et
+    par l'interface (bornage du sélecteur de date) : une seule définition,
+    un seul message d'erreur explicite.
+
+    Args:
+        annee_scolaire: Texte saisi pour l'année scolaire
+
+    Returns:
+        L'année de début (entier entre 1 et 9999, bornes de `datetime.date`)
+
+    Raises:
+        ValueError: Si le texte ne contient pas d'année exploitable
+    """
+    texte = (annee_scolaire or "").strip()
+    premiere_partie = texte.split("-")[0].strip()
+    try:
+        annee = int(premiere_partie)
+    except ValueError:
+        annee = 0  # force le refus ci-dessous
+
+    if not 1 <= annee <= 9999:
+        raise ValueError(
+            f"L'année scolaire « {texte} » est invalide "
+            "(format attendu : 2025-2026)."
+        )
+    return annee
+
+
 def libelle_mode_paiement(mode: str) -> str:
     """Convertit le code du mode de paiement en libellé lisible.
 

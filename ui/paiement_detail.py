@@ -24,7 +24,7 @@ class DialogueDetailPaiement(QDialog):
 
     reimprimer_recu = Signal(int)  # émet id_paiement
 
-    def __init__(self, parent=None, id_paiement: int = None):
+    def __init__(self, parent=None, id_paiement: int | None = None):
         super().__init__(parent)
         self.id_paiement = id_paiement
 
