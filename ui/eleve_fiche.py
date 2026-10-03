@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 from repositories import paiement_repository
 from services import eleve_service
-from ui.theme import COULEUR_STATUT, PALETTE
+from ui.theme import COULEUR_STATUT
 from ui.utils import (
     couleur_statut, formater_date_affichage, formater_montant, initiales,
     libelle_mode_paiement,
@@ -32,7 +32,6 @@ class FicheEleve(QWidget):
 
     # Signaux pour la navigation et les actions
     retour_demande = Signal()
-    nouveau_paiement_demande = Signal(int)  # émet id_eleve
     reimprimer_recu_demande = Signal(int)   # émet id_paiement
 
     def __init__(self, parent=None):

@@ -14,6 +14,7 @@ import sqlite3
 from db.connection import get_connection
 from repositories import eleve_repository, paiement_repository
 from services import recu_service
+from utils.formatage import annee_debut_scolaire
 
 
 MODES_PAIEMENT_AUTORISES = ("especes", "cheque", "virement", "mobile_money")
@@ -60,12 +61,8 @@ def valider_donnees_paiement(id_eleve: int, montant: int, date_paiement: str, mo
     if not eleve:
         raise ValueError(f"L'élève #{id_eleve} est introuvable.")
 
-    annee_scolaire = eleve.get("annee_scolaire", "")
-    try:
-        annee_debut = int(annee_scolaire.split("-")[0].strip())
-    except (ValueError, IndexError):
-        annee_debut = int(str(annee_scolaire)[:4])
-
+    # Parsing partagé avec l'interface (une seule définition, un seul message)
+    annee_debut = annee_debut_scolaire(eleve.get("annee_scolaire", ""))
     date_min = date(annee_debut, 1, 1)
     if date_obj < date_min:
         raise ValueError(
@@ -151,7 +148,18 @@ def enregistrer_paiement(id_eleve: int, montant: int, date_paiement: str, mode_p
                 "solde_apres": solde_apres,
             }
 
-        except sqlite3.IntegrityError:
+        except sqlite3.IntegrityError as erreur:
+            # Seul un conflit sur le numéro de reçu (deux fenêtres qui
+            # enregistrent au même instant) mérite un nouvel essai.
+            # Une autre contrainte échouerait de la même façon trois fois
+            # de suite : on remonte immédiatement un message clair, sans
+            # texte technique SQLite.
+            if "numero_recu" not in str(erreur):
+                raise ValueError(
+                    "Impossible d'enregistrer ce paiement : une donnée "
+                    "référencée est introuvable ou a été modifiée "
+                    "pendant la saisie. Veuillez réessayer."
+                )
             # Conflit de numéro de reçu (doublon) → réessayer
             if tentative >= MAX_TENTATIVES:
                 raise ValueError(

@@ -165,21 +165,6 @@ def supprimer_eleve(id_eleve: int):
     eleve_repository.supprimer(id_eleve)
 
 
-def calculer_solde(id_eleve: int) -> int:
-    """Calcule le solde restant dû pour un élève.
-
-    solde = total_du - somme des paiements
-
-    Returns:
-        Le solde en FCFA (toujours >= 0 grâce aux validations)
-    """
-    eleve = eleve_repository.obtenir_par_id(id_eleve)
-    if eleve is None:
-        raise ValueError("Élève introuvable.")
-    somme = paiement_repository.somme_paiements(id_eleve)
-    return eleve["total_du"] - somme
-
-
 def _determiner_statut(solde: int, nombre_paiements: int) -> str:
     if solde == 0:
         return STATUT_SOLDE

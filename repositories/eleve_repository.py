@@ -100,11 +100,6 @@ def obtenir_par_id(id_eleve: int,
             conn.close()
 
 
-def obtenir_par_id_avec_conn(id_eleve: int, conn) -> dict | None:
-    """Alias pour obtenir_par_id avec connexion existante."""
-    return obtenir_par_id(id_eleve, conn=conn)
-
-
 def obtenir_total_du(id_eleve: int,
                      conn: sqlite3.Connection | None = None) -> int:
     """Retourne le montant total dû pour un élève.

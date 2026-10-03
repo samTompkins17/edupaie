@@ -14,6 +14,7 @@ Vérifie l'ensemble des règles métier critiques et critères d'acceptation :
 
 import unittest
 import os
+import sqlite3
 import tempfile
 import time
 from datetime import date, timedelta
@@ -21,7 +22,7 @@ from unittest.mock import patch
 
 from db.connection import get_connection
 from db.seed import reinitialiser_base
-from repositories import eleve_repository, paiement_repository
+from repositories import eleve_repository
 from services import eleve_service, paiement_service, recu_service
 from receipts import pdf_generator
 
@@ -149,6 +150,7 @@ class TestEduPaie(unittest.TestCase):
         REC-2028-10000, l'insère, et vérifie que le suivant est REC-2028-10001.
         """
         conn = get_connection()
+        id_tmp = None
         try:
             # Créer un élève temporaire pour ce test
             curseur = conn.execute(
@@ -181,16 +183,13 @@ class TestEduPaie(unittest.TestCase):
             # Le prochain doit être REC-2028-10001
             suivant2 = recu_service.generer_numero_recu("2028")
             self.assertEqual(suivant2, "REC-2028-10001")
-
         finally:
             # Nettoyage : supprimer les paiements puis l'élève de test
-            conn.execute(
-                "DELETE FROM paiement WHERE id_eleve = ?", (id_tmp,)
-            )
-            conn.execute(
-                "DELETE FROM eleve WHERE id_eleve = ?", (id_tmp,)
-            )
-            conn.commit()
+            # (garde-fou : rien à nettoyer si l'élève n'a pas été créé)
+            if id_tmp is not None:
+                conn.execute("DELETE FROM paiement WHERE id_eleve = ?", (id_tmp,))
+                conn.execute("DELETE FROM eleve WHERE id_eleve = ?", (id_tmp,))
+                conn.commit()
             conn.close()
 
     def test_11_validation_dates_paiement(self):
@@ -537,6 +536,84 @@ class TestEduPaie(unittest.TestCase):
             # Chaque ligne affichée porte bien le statut sélectionné
             for ligne in range(tableau.tableau.rowCount()):
                 self.assertEqual(tableau.tableau.item(ligne, 6).text(), statut)
+
+
+    def test_19_dialogue_paiement_eleve_introuvable(self):
+        """Vérifie que le dialogue de paiement survit à un élève introuvable.
+
+        Avant correctif, _charger_infos_eleve laissait `self.eleve` non
+        défini : la construction du formulaire levait une AttributeError
+        et plantait l'application au lieu d'afficher le message d'erreur.
+        """
+        # Rendu hors écran + QMessageBox simulé (sinon il attend un clic)
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication, QDialog
+        from ui.paiement_dialog import DialoguePaiement
+
+        QApplication.instance() or QApplication([])
+        with patch("ui.paiement_dialog.QMessageBox.critical") as message:
+            dialogue = DialoguePaiement(None, id_eleve=999999)
+
+            # Construction sans exception, message d'erreur affiché
+            self.assertIsNone(dialogue.eleve)
+            message.assert_called_once()
+
+            # Le formulaire inexploitable refuse de s'afficher : annulé
+            self.assertEqual(dialogue.exec(), QDialog.Rejected)
+
+    def test_20_refus_integrite_hors_numero_recu(self):
+        """Vérifie qu'une erreur hors numéro de reçu n'est pas réessayée.
+
+        Avant correctif, TOUTES les sqlite3.IntegrityError déclenchaient
+        3 tentatives, puis un message annonçant à tort un problème de
+        numéro de reçu.
+        """
+        with patch(
+            "repositories.paiement_repository.inserer",
+            side_effect=sqlite3.IntegrityError("FOREIGN KEY constraint failed"),
+        ) as insertion:
+            with self.assertRaises(ValueError) as ctx:
+                paiement_service.enregistrer_paiement(
+                    3, 5000, "2026-03-01", "especes"
+                )
+
+        # Message clair, sans faire porter au numéro de reçu une erreur
+        # qui ne le concerne pas
+        self.assertNotIn("numéro de reçu", str(ctx.exception))
+        # Une seule tentative : réessayer une contrainte échouée ne sert à rien
+        self.assertEqual(insertion.call_count, 1)
+
+    def test_21_annee_scolaire_invalide(self):
+        """Vérifie le message explicite pour une année scolaire inexploitable.
+
+        Avant correctif, le parsing levait une erreur Python brute
+        (« invalid literal for int() ») transmise telle quelle à l'utilisateur.
+        """
+        from utils.formatage import annee_debut_scolaire
+
+        # Cas nominaux : première année extraite du texte
+        self.assertEqual(annee_debut_scolaire("2025-2026"), 2025)
+        self.assertEqual(annee_debut_scolaire("2026"), 2026)
+
+        # Texte non numérique → message clair en français
+        with self.assertRaises(ValueError) as ctx:
+            annee_debut_scolaire("abc-def")
+        self.assertIn("année scolaire", str(ctx.exception))
+
+        # Contrôle en profondeur : paiement pour un élève mal renseigné
+        id_test = eleve_service.ajouter_eleve(
+            nom="ANNEE_BUGUEE", prenom="Test", classe="6ème",
+            annee_scolaire="abc", total_du=100000,
+        )
+        try:
+            with self.assertRaises(ValueError) as ctx:
+                paiement_service.valider_donnees_paiement(
+                    id_test, 5000, "2026-03-01", "especes"
+                )
+            self.assertIn("année scolaire", str(ctx.exception))
+        finally:
+            # Nettoyage (aucun paiement -> suppression autorisée)
+            eleve_service.supprimer_eleve(id_test)
 
 
 if __name__ == "__main__":

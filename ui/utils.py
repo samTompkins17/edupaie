@@ -8,6 +8,7 @@ design system (`ui.theme`) afin de garantir une cohérence globale.
 
 from ui.theme import COULEUR_STATUT, PALETTE
 from utils.formatage import (
+    annee_debut_scolaire,
     formater_montant,
     formater_date_affichage,
     libelle_mode_paiement,
@@ -15,8 +16,8 @@ from utils.formatage import (
 
 __all__ = [
     "PALETTE",
-    "formater_montant", "formater_date_affichage", "couleur_statut",
-    "libelle_mode_paiement", "initiales",
+    "annee_debut_scolaire", "formater_montant", "formater_date_affichage",
+    "couleur_statut", "libelle_mode_paiement", "initiales",
 ]
 
 

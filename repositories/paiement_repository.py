@@ -116,27 +116,6 @@ def somme_paiements(id_eleve: int,
             conn.close()
 
 
-def somme_paiements_avec_conn(id_eleve: int, conn) -> int:
-    """Alias pour somme_paiements avec connexion existante."""
-    return somme_paiements(id_eleve, conn=conn)
-
-
-def total_encaisse() -> int:
-    """Retourne la somme totale de tous les paiements (tous élèves confondus).
-
-    Returns:
-        Montant total encaissé en FCFA
-    """
-    conn = get_connection()
-    try:
-        curseur = conn.execute(
-            "SELECT COALESCE(SUM(montant), 0) AS total FROM paiement"
-        )
-        return curseur.fetchone()["total"]
-    finally:
-        conn.close()
-
-
 def compter_par_eleve(id_eleve: int) -> int:
     """Retourne le nombre de paiements enregistrés pour un élève.
 

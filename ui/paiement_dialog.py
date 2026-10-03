@@ -17,15 +17,16 @@ from PySide6.QtWidgets import (
 
 from services import eleve_service, paiement_service
 from ui.theme import PALETTE, creer_carte
-from ui.utils import formater_montant
+from ui.utils import annee_debut_scolaire, formater_montant
 
 
 class DialoguePaiement(QDialog):
     """Dialogue modal pour enregistrer un versement de scolarité."""
 
-    def __init__(self, parent=None, id_eleve: int = None):
+    def __init__(self, parent=None, id_eleve: int | None = None):
         super().__init__(parent)
         self.id_eleve = id_eleve
+        self.eleve = None  # Renseigné uniquement si l'élève a pu être chargé
         self.paiement_cree = None  # Contient les données du paiement après succès
         self.imprimer_demande = False
 
@@ -34,15 +35,25 @@ class DialoguePaiement(QDialog):
         self.setModal(True)
 
         self._charger_infos_eleve()
+        if self.eleve is None:
+            # Élève introuvable : le message d'erreur est déjà affiché,
+            # inutile de construire un formulaire sans données.
+            return
         self._construire_interface()
+
+    def exec(self):
+        """Affiche le dialogue ; renvoie Rejected si l'élève est introuvable."""
+        if self.eleve is None:
+            return QDialog.Rejected
+        return super().exec()
 
     def _charger_infos_eleve(self):
         """Récupère les informations et le solde courant de l'élève."""
         try:
             self.eleve = eleve_service.obtenir_eleve(self.id_eleve)
         except Exception as e:
+            self.eleve = None
             QMessageBox.critical(self, "Erreur", f"Impossible de charger l'élève : {e}")
-            self.reject()
 
     def _construire_interface(self):
         """Construit l'interface du formulaire de paiement."""
@@ -131,9 +142,11 @@ class DialoguePaiement(QDialog):
         self.champ_date.setDisplayFormat("dd/MM/yyyy")
         self.champ_date.setMaximumDate(QDate.currentDate())
         try:
-            annee_debut = int(self.eleve["annee_scolaire"].split("-")[0].strip())
-        except Exception:
-            annee_debut = int(str(self.eleve["annee_scolaire"])[:4])
+            annee_debut = annee_debut_scolaire(self.eleve["annee_scolaire"])
+        except ValueError:
+            # Année scolaire inexploitable : on garde un bornage raisonnable,
+            # la validation métier refusera de toute façon le paiement.
+            annee_debut = QDate.currentDate().year()
         self.champ_date.setMinimumDate(QDate(annee_debut, 1, 1))
         formulaire.addRow("Date du paiement :", self.champ_date)
 
