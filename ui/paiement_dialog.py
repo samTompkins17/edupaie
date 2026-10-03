@@ -129,6 +129,12 @@ class DialoguePaiement(QDialog):
         self.champ_date.setDate(QDate.currentDate())
         self.champ_date.setCalendarPopup(True)
         self.champ_date.setDisplayFormat("dd/MM/yyyy")
+        self.champ_date.setMaximumDate(QDate.currentDate())
+        try:
+            annee_debut = int(self.eleve["annee_scolaire"].split("-")[0].strip())
+        except Exception:
+            annee_debut = int(str(self.eleve["annee_scolaire"])[:4])
+        self.champ_date.setMinimumDate(QDate(annee_debut, 1, 1))
         formulaire.addRow("Date du paiement :", self.champ_date)
 
         # 3. Mode de paiement
