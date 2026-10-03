@@ -136,6 +136,46 @@ def obtenir_total_du(id_eleve: int,
             conn.close()
 
 
+def existe_doublon(nom: str, prenom: str, classe: str,
+                   annee_scolaire: str, id_exclu: int | None = None) -> bool:
+    """Vérifie si un élève identique existe déjà (fix/validation-eleve).
+
+    Deux élèves sont considérés identiques si (nom, prénom, classe,
+    année scolaire) correspondent, sans tenir compte de la casse
+    ni des espaces en trop.
+
+    Args:
+        nom, prenom, classe, annee_scolaire: Valeurs saisies à contrôler
+        id_exclu: Id de l'élève à ignorer dans la comparaison
+                  (cas d'une modification : l'élève lui-même ne compte pas
+                  comme un doublon), ou None pour un ajout
+
+    Returns:
+        True si un autre élève avec les mêmes clés existe déjà
+    """
+    conn = get_connection()
+    try:
+        # LOWER(TRIM(...)) : comparaison insensible à la casse et aux espaces
+        requete = (
+            "SELECT COUNT(*) FROM eleve "
+            "WHERE LOWER(TRIM(nom)) = LOWER(TRIM(?)) "
+            "AND LOWER(TRIM(prenom)) = LOWER(TRIM(?)) "
+            "AND LOWER(TRIM(classe)) = LOWER(TRIM(?)) "
+            "AND LOWER(TRIM(annee_scolaire)) = LOWER(TRIM(?))"
+        )
+        parametres = [nom, prenom, classe, annee_scolaire]
+
+        # Pour une modification, ignorer l'élève lui-même
+        if id_exclu is not None:
+            requete += " AND id_eleve != ?"
+            parametres.append(id_exclu)
+
+        curseur = conn.execute(requete, parametres)
+        return curseur.fetchone()[0] > 0
+    finally:
+        conn.close()
+
+
 def rechercher(terme: str = "", classe_filtre: str = "") -> list[dict]:
     """Recherche des élèves avec calcul direct du cumul des paiements.
 
