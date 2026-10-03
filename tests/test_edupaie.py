@@ -15,6 +15,7 @@ Vérifie l'ensemble des règles métier critiques et critères d'acceptation :
 import unittest
 import os
 import tempfile
+from datetime import date, timedelta
 from unittest.mock import patch
 
 from db.connection import get_connection
@@ -185,6 +186,34 @@ class TestEduPaie(unittest.TestCase):
             )
             conn.commit()
             conn.close()
+
+    def test_11_validation_dates_paiement(self):
+        """Vérifie le contrôle des dates de versement (F3 / fix dates-paiement).
+
+        - Date future refusée
+        - Date 1900 refusée (antérieure au 01/01 de l'année scolaire)
+        - Date du jour acceptée
+        """
+        # Élève 3 (COULIBALY Fatou, 2025-2026, solde restant > 0)
+        aujourdhui = date.today()
+        date_future = (aujourdhui + timedelta(days=1)).isoformat()
+        date_1900 = "1900-01-01"
+        date_du_jour = aujourdhui.isoformat()
+
+        # 1. Date future -> refusée
+        with self.assertRaises(ValueError) as ctx:
+            paiement_service.enregistrer_paiement(3, 5000, date_future, "especes")
+        self.assertIn("postérieure à la date du jour", str(ctx.exception))
+
+        # 2. Date 1900 -> refusée
+        with self.assertRaises(ValueError) as ctx:
+            paiement_service.enregistrer_paiement(3, 5000, date_1900, "especes")
+        self.assertIn("antérieure au 1er janvier de la première année scolaire", str(ctx.exception))
+
+        # 3. Date du jour -> acceptée
+        res = paiement_service.enregistrer_paiement(3, 5000, date_du_jour, "especes")
+        self.assertIsNotNone(res["id_paiement"])
+        self.assertEqual(res["date_paiement"], date_du_jour)
 
 
 if __name__ == "__main__":
