@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 from db.connection import get_connection
 from db.seed import reinitialiser_base
+from repositories import eleve_repository, paiement_repository
 from services import eleve_service, paiement_service, recu_service
 from receipts import pdf_generator
 
@@ -218,6 +219,49 @@ class TestEduPaie(unittest.TestCase):
         res = paiement_service.enregistrer_paiement(3, 5000, date_du_jour, "especes")
         self.assertIsNotNone(res["id_paiement"])
         self.assertEqual(res["date_paiement"], date_du_jour)
+
+    def test_12_decouplage_couches(self):
+        """Vérifie le respect strict du découpage en couches (refactor/couches).
+
+        - utils.formatage exporte les utilitaires indépendamment de UI
+        - eleve_repository.obtenir_total_du fonctionne avec/sans connexion
+        - Aucune dépendance 'from ui' ou 'import ui' dans services, receipts, db, utils
+        """
+        from utils.formatage import (
+            formater_montant,
+            formater_date_affichage,
+            libelle_mode_paiement,
+        )
+
+        self.assertEqual(formater_montant(10000), "10 000 FCFA")
+        self.assertEqual(formater_date_affichage("2026-03-30"), "30/03/2026")
+        self.assertEqual(libelle_mode_paiement("mobile_money"), "Mobile Money")
+
+        # Repository obtenir_total_du
+        total_du = eleve_repository.obtenir_total_du(1)
+        self.assertEqual(total_du, 250000)
+
+        # Vérification qu'aucun fichier hors ui n'importe ui
+        racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        dossiers_interdits = ["services", "receipts", "repositories", "db", "utils"]
+        for dossier in dossiers_interdits:
+            chemin_dossier = os.path.join(racine, dossier)
+            if not os.path.isdir(chemin_dossier):
+                continue
+            for nom_fic in os.listdir(chemin_dossier):
+                if nom_fic.endswith(".py"):
+                    with open(os.path.join(chemin_dossier, nom_fic), "r", encoding="utf-8") as f:
+                        contenu = f.read()
+                        self.assertNotIn(
+                            "from ui",
+                            contenu,
+                            f"{nom_fic} dans {dossier} ne doit pas importer depuis ui",
+                        )
+                        self.assertNotIn(
+                            "import ui",
+                            contenu,
+                            f"{nom_fic} dans {dossier} ne doit pas importer ui",
+                        )
 
 
 if __name__ == "__main__":

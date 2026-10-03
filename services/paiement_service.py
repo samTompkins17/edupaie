@@ -101,17 +101,9 @@ def enregistrer_paiement(id_eleve: int, montant: int, date_paiement: str, mode_p
         conn = get_connection()
         try:
             with conn:
-                # Vérifier l'existence de l'élève via le repository
-                eleve = eleve_repository.obtenir_par_id_avec_conn(id_eleve, conn)
-                if not eleve:
-                    raise ValueError(f"L'élève #{id_eleve} est introuvable.")
-
-                total_du = eleve["total_du"]
-
-                # Calculer la somme déjà payée sous verrou de transaction
-                total_paye = paiement_repository.somme_paiements_avec_conn(
-                    id_eleve, conn
-                )
+                # Récupérer le total dû et la somme déjà payée via les repositories
+                total_du = eleve_repository.obtenir_total_du(id_eleve, conn=conn)
+                total_paye = paiement_repository.somme_paiements(id_eleve, conn=conn)
                 solde_restant = total_du - total_paye
 
                 # RÈGLE MÉTIER CRITIQUE : Dépassement de solde interdit

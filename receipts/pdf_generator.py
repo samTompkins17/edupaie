@@ -21,7 +21,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from utils.paths import get_receipts_dir, resource_path
 from services import recu_service
-from ui.utils import (
+from utils.formatage import (
     formater_montant, formater_date_affichage, libelle_mode_paiement,
 )
 
