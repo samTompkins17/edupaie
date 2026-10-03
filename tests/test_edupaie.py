@@ -93,7 +93,9 @@ class TestEduPaie(unittest.TestCase):
         """Vérifie le format séquentiel REC-AAAA-NNNN et l'unicité."""
         num = recu_service.generer_numero_recu("2026")
         self.assertTrue(num.startswith("REC-2026-"))
-        self.assertEqual(len(num), 13)
+        # Le numéro doit avoir au minimum 4 chiffres (format REC-AAAA-NNNN)
+        compteur = num.split("-")[2]
+        self.assertGreaterEqual(len(compteur), 4)
 
     def test_06_refus_suppression_eleve_avec_paiements(self):
         """Vérifie qu'un élève ayant des versements ne peut pas être supprimé."""
@@ -132,6 +134,57 @@ class TestEduPaie(unittest.TestCase):
         self.assertEqual(stats["nombre_soldes"], 6)
         self.assertEqual(stats["nombre_partiellement_payes"], 7)
         self.assertEqual(stats["nombre_non_payes"], 5)
+
+    def test_10_numerotation_au_dela_9999(self):
+        """Vérifie que la numérotation fonctionne au-delà de 9999 reçus/an.
+
+        Insère directement REC-2028-9999, puis vérifie que le suivant est
+        REC-2028-10000, l'insère, et vérifie que le suivant est REC-2028-10001.
+        """
+        conn = get_connection()
+        try:
+            # Créer un élève temporaire pour ce test
+            curseur = conn.execute(
+                "INSERT INTO eleve (nom, prenom, classe, annee_scolaire, total_du) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("TEST_NUM", "Temporaire", "6ème", "2028-2029", 9000000),
+            )
+            id_tmp = curseur.lastrowid
+
+            # Insérer un paiement avec le numéro REC-2028-9999
+            conn.execute(
+                "INSERT INTO paiement (id_eleve, montant, date_paiement, "
+                "mode_paiement, numero_recu, solde_apres) VALUES (?,?,?,?,?,?)",
+                (id_tmp, 1000, "2028-09-01", "especes", "REC-2028-9999", 8999000),
+            )
+            conn.commit()
+
+            # Le prochain numéro doit être REC-2028-10000
+            suivant = recu_service.generer_numero_recu("2028")
+            self.assertEqual(suivant, "REC-2028-10000")
+
+            # Insérer ce numéro pour vérifier la séquence suivante
+            conn.execute(
+                "INSERT INTO paiement (id_eleve, montant, date_paiement, "
+                "mode_paiement, numero_recu, solde_apres) VALUES (?,?,?,?,?,?)",
+                (id_tmp, 1000, "2028-09-02", "especes", "REC-2028-10000", 8998000),
+            )
+            conn.commit()
+
+            # Le prochain doit être REC-2028-10001
+            suivant2 = recu_service.generer_numero_recu("2028")
+            self.assertEqual(suivant2, "REC-2028-10001")
+
+        finally:
+            # Nettoyage : supprimer les paiements puis l'élève de test
+            conn.execute(
+                "DELETE FROM paiement WHERE id_eleve = ?", (id_tmp,)
+            )
+            conn.execute(
+                "DELETE FROM eleve WHERE id_eleve = ?", (id_tmp,)
+            )
+            conn.commit()
+            conn.close()
 
 
 if __name__ == "__main__":

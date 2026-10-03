@@ -110,6 +110,24 @@ def somme_paiements(id_eleve: int) -> int:
         conn.close()
 
 
+def somme_paiements_avec_conn(id_eleve: int, conn) -> int:
+    """Retourne la somme des paiements en utilisant une connexion existante.
+
+    Même logique que somme_paiements, mais participe à la transaction
+    ouverte par la couche service (pas de fermeture de connexion).
+
+    Args:
+        id_eleve: Identifiant de l'élève
+        conn: Connexion SQLite fournie par l'appelant
+    """
+    curseur = conn.execute(
+        "SELECT COALESCE(SUM(montant), 0) AS total "
+        "FROM paiement WHERE id_eleve = ?",
+        (id_eleve,),
+    )
+    return curseur.fetchone()["total"]
+
+
 def total_encaisse() -> int:
     """Retourne la somme totale de tous les paiements (tous élèves confondus).
 
@@ -165,9 +183,13 @@ def dernier_numero_recu(annee: str,
         fermer = True
 
     try:
+        # Tri numérique sur le compteur (après le préfixe "REC-AAAA-" = 9 car.)
+        # pour éviter que REC-2028-9999 passe devant REC-2028-10000
         curseur = conn.execute(
-            "SELECT MAX(numero_recu) AS dernier FROM paiement "
-            "WHERE numero_recu LIKE ?",
+            "SELECT numero_recu AS dernier FROM paiement "
+            "WHERE numero_recu LIKE ? "
+            "ORDER BY CAST(substr(numero_recu, 10) AS INTEGER) DESC "
+            "LIMIT 1",
             (f"REC-{annee}-%",),
         )
         resultat = curseur.fetchone()
