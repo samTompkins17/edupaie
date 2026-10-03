@@ -357,5 +357,99 @@ class TestEduPaie(unittest.TestCase):
                 self.assertEqual(stats["nombre_partiellement_payes"], 2000)
 
 
+    def test_14_refus_doublon_eleve(self):
+        """Vérifie le refus des doublons (nom, prénom, classe, année scolaire).
+
+        - Ajout refusé si l'élève existe déjà (casse et espaces ignorés)
+        - Modification refusée si elle entre en collision avec un autre élève
+        - Modification de l'élève lui-même autorisée
+        """
+        id_a = eleve_service.ajouter_eleve(
+            nom="DOUBLONTEST", prenom="Alpha", classe="6ème",
+            annee_scolaire="2025-2026", total_du=50000,
+        )
+        id_b = eleve_service.ajouter_eleve(
+            nom="DOUBLONTEST", prenom="Beta", classe="5ème",
+            annee_scolaire="2025-2026", total_du=50000,
+        )
+        try:
+            # 1. Ajout d'un doublon : casse et espaces en trop ignorés
+            with self.assertRaises(ValueError) as ctx:
+                eleve_service.ajouter_eleve(
+                    nom="  doublontest ", prenom=" Alpha ", classe="6ème",
+                    annee_scolaire="2025-2026", total_du=60000,
+                )
+            self.assertIn("doublons sont refusés", str(ctx.exception))
+
+            # 2. Modification d'un autre élève vers les clés du premier
+            with self.assertRaises(ValueError) as ctx:
+                eleve_service.modifier_eleve(
+                    id_b, nom="DOUBLONTEST", prenom="alpha", classe="6ème",
+                    annee_scolaire="2025-2026", total_du=50000,
+                )
+            self.assertIn("doublons sont refusés", str(ctx.exception))
+
+            # 3. Modification de l'élève lui-même (mêmes valeurs) : autorisée
+            eleve_service.modifier_eleve(
+                id_a, nom="DOUBLONTEST", prenom="Alpha", classe="6ème",
+                annee_scolaire="2025-2026", total_du=55000,
+            )
+            self.assertEqual(eleve_service.obtenir_eleve(id_a)["total_du"], 55000)
+        finally:
+            # Nettoyage (aucun paiement -> suppression autorisée)
+            eleve_service.supprimer_eleve(id_a)
+            eleve_service.supprimer_eleve(id_b)
+
+    def test_15_refus_total_du_nul(self):
+        """Vérifie que le total dû doit être strictement supérieur à 0."""
+        # total_du = 0 -> refusé
+        with self.assertRaises(ValueError) as ctx:
+            eleve_service.ajouter_eleve(
+                nom="ZERO", prenom="Test", classe="6ème",
+                annee_scolaire="2025-2026", total_du=0,
+            )
+        self.assertIn("strictement positif", str(ctx.exception))
+
+        # total_du négatif -> toujours refusé
+        with self.assertRaises(ValueError):
+            eleve_service.ajouter_eleve(
+                nom="NEGATIF", prenom="Test", classe="6ème",
+                annee_scolaire="2025-2026", total_du=-100,
+            )
+
+        # Vérification directe de la fonction de validation
+        with self.assertRaises(ValueError):
+            eleve_service.valider_donnees(
+                "ZERO", "Test", "6ème", "2025-2026", 0,
+            )
+
+    def test_16_refus_booleens(self):
+        """Vérifie que True/False sont rejetés pour les montants entiers.
+
+        En Python, True/False sont des int : ils passeraient sinon les
+        contrôles isinstance(x, int).
+        """
+        # Élève : total_du booléen refusé (validation directe et via le service)
+        with self.assertRaises(ValueError):
+            eleve_service.valider_donnees(
+                "BOOLEEN", "Test", "6ème", "2025-2026", True,
+            )
+        with self.assertRaises(ValueError):
+            eleve_service.ajouter_eleve(
+                nom="BOOLEEN", prenom="Test", classe="6ème",
+                annee_scolaire="2025-2026", total_du=False,
+            )
+
+        # Paiement : montant booléen refusé (validation directe et via le service)
+        with self.assertRaises(ValueError):
+            paiement_service.valider_donnees_paiement(
+                3, True, "2026-03-01", "especes",
+            )
+        with self.assertRaises(ValueError):
+            paiement_service.enregistrer_paiement(
+                3, False, "2026-03-01", "especes",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

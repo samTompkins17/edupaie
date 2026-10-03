@@ -25,8 +25,16 @@ def valider_donnees_paiement(id_eleve: int, montant: int, date_paiement: str, mo
     Raises:
         ValueError: Si un paramètre est invalide, date future ou antérieure à l'année scolaire
     """
+    # Rejeter d'abord les booléens : en Python, True/False sont des int,
+    # ils passeraient donc à travers les contrôles isinstance(x, int) ci-dessous.
+    if isinstance(id_eleve, bool):
+        raise ValueError("L'élève rattaché au paiement est obligatoire.")
+
     if not id_eleve or not isinstance(id_eleve, int):
         raise ValueError("L'élève rattaché au paiement est obligatoire.")
+
+    if isinstance(montant, bool):
+        raise ValueError("Le montant du paiement doit être un entier strictement positif.")
 
     if not isinstance(montant, int) or montant <= 0:
         raise ValueError("Le montant du paiement doit être un entier strictement positif.")

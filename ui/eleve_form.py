@@ -92,7 +92,8 @@ class FormulaireEleve(QDialog):
 
         # Champ Montant total dû
         self.champ_total_du = QSpinBox()
-        self.champ_total_du.setMinimum(0)
+        # Minimum 1 : un total dû de 0 n'a pas de sens (fix/validation-eleve)
+        self.champ_total_du.setMinimum(1)
         self.champ_total_du.setMaximum(10_000_000)  # 10 millions FCFA max
         self.champ_total_du.setSingleStep(5000)
         self.champ_total_du.setSuffix(" FCFA")

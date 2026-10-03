@@ -43,8 +43,41 @@ def valider_donnees(nom: str, prenom: str, classe: str,
         )
     if not annee_scolaire or not annee_scolaire.strip():
         raise ValueError("L'année scolaire est obligatoire.")
-    if not isinstance(total_du, int) or total_du < 0:
-        raise ValueError("Le montant total dû doit être un entier positif ou nul.")
+
+    # Rejeter d'abord les booléens : en Python, True/False sont des int,
+    # ils passeraient donc à travers le contrôle isinstance(total_du, int).
+    if isinstance(total_du, bool):
+        raise ValueError("Le montant total dû doit être un entier strictement positif.")
+
+    # total_du doit être strictement supérieur à 0 (fix/validation-eleve)
+    if not isinstance(total_du, int) or total_du <= 0:
+        raise ValueError("Le montant total dû doit être un entier strictement positif.")
+
+
+def _refuser_si_doublon(nom: str, prenom: str, classe: str,
+                        annee_scolaire: str,
+                        id_exclu: int | None = None, action: str = "ajouter"):
+    """Refuse l'ajout ou la modification si l'élève existe déjà (doublon).
+
+    La comparaison est faite par le repository sans tenir compte de la
+    casse ni des espaces en trop. Pour une modification, l'élève lui-même
+    est ignoré (id_exclu) : il a le droit de garder son identité.
+
+    Raises:
+        ValueError: Si un autre élève avec les mêmes clés existe déjà
+    """
+    if eleve_repository.existe_doublon(nom, prenom, classe, annee_scolaire, id_exclu):
+        if action == "modifier":
+            raise ValueError(
+                f"Impossible de modifier cet élève : un autre élève « {nom} {prenom} » "
+                f"existe déjà en {classe} pour l'année scolaire {annee_scolaire}. "
+                "Les doublons sont refusés."
+            )
+        raise ValueError(
+            f"Impossible d'ajouter cet élève : un élève « {nom} {prenom} » "
+            f"existe déjà en {classe} pour l'année scolaire {annee_scolaire}. "
+            "Les doublons sont refusés."
+        )
 
 
 def ajouter_eleve(nom: str, prenom: str, classe: str,
@@ -58,12 +91,22 @@ def ajouter_eleve(nom: str, prenom: str, classe: str,
         L'identifiant du nouvel élève
 
     Raises:
-        ValueError: Si les données sont invalides
+        ValueError: Si les données sont invalides ou en cas de doublon
     """
     valider_donnees(nom, prenom, classe, annee_scolaire, total_du)
+
+    # Normalisation identique à celle utilisée pour l'insertion
+    nom_propre = nom.strip().upper()
+    prenom_propre = prenom.strip()
+    classe_propre = classe.strip()
+    annee_propre = annee_scolaire.strip()
+
+    # Refus d'un doublon (même élève déjà inscrit, casse/espaces ignorés)
+    _refuser_si_doublon(nom_propre, prenom_propre, classe_propre, annee_propre,
+                        action="ajouter")
+
     return eleve_repository.inserer(
-        nom.strip().upper(), prenom.strip(), classe.strip(),
-        annee_scolaire.strip(), total_du,
+        nom_propre, prenom_propre, classe_propre, annee_propre, total_du,
     )
 
 
@@ -75,9 +118,20 @@ def modifier_eleve(id_eleve: int, nom: str, prenom: str, classe: str,
     à la somme déjà payée (ce qui créerait un solde négatif).
 
     Raises:
-        ValueError: Si les données sont invalides ou incohérentes
+        ValueError: Si les données sont invalides, incohérentes ou en cas de doublon
     """
     valider_donnees(nom, prenom, classe, annee_scolaire, total_du)
+
+    # Normalisation identique à celle utilisée pour l'enregistrement
+    nom_propre = nom.strip().upper()
+    prenom_propre = prenom.strip()
+    classe_propre = classe.strip()
+    annee_propre = annee_scolaire.strip()
+
+    # Refus d'un doublon : l'élève modifié ne doit pas entrer en collision
+    # avec un autre élève (lui-même est ignoré dans la comparaison)
+    _refuser_si_doublon(nom_propre, prenom_propre, classe_propre, annee_propre,
+                        id_exclu=id_eleve, action="modifier")
 
     # Vérifier que le nouveau total_du ne crée pas de solde négatif
     somme_payee = paiement_repository.somme_paiements(id_eleve)
@@ -88,8 +142,8 @@ def modifier_eleve(id_eleve: int, nom: str, prenom: str, classe: str,
         )
 
     eleve_repository.modifier(
-        id_eleve, nom.strip().upper(), prenom.strip(), classe.strip(),
-        annee_scolaire.strip(), total_du,
+        id_eleve, nom_propre, prenom_propre, classe_propre,
+        annee_propre, total_du,
     )
 
 
