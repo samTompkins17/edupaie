@@ -267,39 +267,45 @@ class TableauDeBord(QWidget):
                 or terme in e["classe"].lower()
             ]
 
-        # Remplissage du tableau
-        self.tableau.setRowCount(len(eleves))
-        for ligne, eleve in enumerate(eleves):
-            item_nom = QTableWidgetItem(eleve["nom"])
-            item_nom.setData(Qt.ItemDataRole.UserRole, eleve["id_eleve"])
-            item_nom.setFont(QFont("Segoe UI", 10, QFont.Weight.DemiBold))
-            self.tableau.setItem(ligne, 0, item_nom)
+        # Remplissage du tableau avec suspension des rafraîchissements pour la fluidité
+        self.tableau.setUpdatesEnabled(False)
+        self.tableau.blockSignals(True)
+        try:
+            self.tableau.setRowCount(len(eleves))
+            for ligne, eleve in enumerate(eleves):
+                item_nom = QTableWidgetItem(eleve["nom"])
+                item_nom.setData(Qt.ItemDataRole.UserRole, eleve["id_eleve"])
+                item_nom.setFont(QFont("Segoe UI", 10, QFont.Weight.DemiBold))
+                self.tableau.setItem(ligne, 0, item_nom)
 
-            self.tableau.setItem(ligne, 1, QTableWidgetItem(eleve["prenom"]))
+                self.tableau.setItem(ligne, 1, QTableWidgetItem(eleve["prenom"]))
 
-            item_classe = QTableWidgetItem(eleve["classe"])
-            item_classe.setForeground(QColor(PALETTE["textMuted"]))
-            self.tableau.setItem(ligne, 2, item_classe)
+                item_classe = QTableWidgetItem(eleve["classe"])
+                item_classe.setForeground(QColor(PALETTE["textMuted"]))
+                self.tableau.setItem(ligne, 2, item_classe)
 
-            self.tableau.setItem(
-                ligne, 3, QTableWidgetItem(formater_montant(eleve["total_du"]))
-            )
-            self.tableau.setItem(
-                ligne, 4, QTableWidgetItem(formater_montant(eleve["somme_payee"]))
-            )
+                self.tableau.setItem(
+                    ligne, 3, QTableWidgetItem(formater_montant(eleve["total_du"]))
+                )
+                self.tableau.setItem(
+                    ligne, 4, QTableWidgetItem(formater_montant(eleve["somme_payee"]))
+                )
 
-            item_solde = QTableWidgetItem(formater_montant(eleve["solde"]))
-            item_solde.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-            if eleve["solde"] > 0:
-                item_solde.setForeground(QColor(COULEUR_STATUT["Non payé"]))
-            else:
-                item_solde.setForeground(QColor(COULEUR_STATUT["Soldé"]))
-            self.tableau.setItem(ligne, 5, item_solde)
+                item_solde = QTableWidgetItem(formater_montant(eleve["solde"]))
+                item_solde.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+                if eleve["solde"] > 0:
+                    item_solde.setForeground(QColor(COULEUR_STATUT["Non payé"]))
+                else:
+                    item_solde.setForeground(QColor(COULEUR_STATUT["Soldé"]))
+                self.tableau.setItem(ligne, 5, item_solde)
 
-            item_statut = QTableWidgetItem(eleve["statut"])
-            item_statut.setForeground(QColor(couleur_statut(eleve["statut"])))
-            item_statut.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-            self.tableau.setItem(ligne, 6, item_statut)
+                item_statut = QTableWidgetItem(eleve["statut"])
+                item_statut.setForeground(QColor(couleur_statut(eleve["statut"])))
+                item_statut.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+                self.tableau.setItem(ligne, 6, item_statut)
+        finally:
+            self.tableau.blockSignals(False)
+            self.tableau.setUpdatesEnabled(True)
 
         self.lbl_resume_lignes.setText(
             f"{len(eleves)} élève(s) affiché(s) sur {len(tous)}"
