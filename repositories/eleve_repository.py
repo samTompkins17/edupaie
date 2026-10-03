@@ -201,8 +201,21 @@ def rechercher(terme: str = "", classe_filtre: str = "") -> list[dict]:
         parametres = []
 
         # Filtre par recherche textuelle (nom ou prénom)
+        # Nettoyage : ignorer les espaces autour du terme saisi
+        terme = (terme or "").strip()
         if terme:
-            requete += " AND (e.nom LIKE ? OR e.prenom LIKE ?)"
+            # Échapper les caractères spéciaux de LIKE pour une recherche
+            # littérale : si l'utilisateur tape %, _ ou \, il doit retrouver
+            # ces caractères tels quels. L'ordre compte : le backslash
+            # d'abord, pour ne pas ré-échapper les séquences créées ensuite.
+            terme = (
+                terme.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
+            requete += (
+                " AND (e.nom LIKE ? ESCAPE '\\' OR e.prenom LIKE ? ESCAPE '\\')"
+            )
             motif = f"%{terme}%"
             parametres.extend([motif, motif])
 
