@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from services import eleve_service
+from services.eleve_service import STATUT_NON_PAYE, STATUT_PARTIEL, STATUT_SOLDE
 from ui.theme import COULEUR_STATUT, PALETTE
 from ui.utils import couleur_statut, formater_montant
 from ui.widgets import CarteKPI, EnTetePage, separateur_horizontal
@@ -130,15 +131,11 @@ class TableauDeBord(QWidget):
         filtres = QHBoxLayout()
         filtres.setSpacing(10)
 
+        # Filtre par statut : uniquement les trois statuts réels de l'application,
+        # libellés issus du service métier pour rester synchronisés avec le tableau
         self.combo_statut = QComboBox()
         self.combo_statut.setMinimumWidth(240)
-        self.combo_statut.addItems([
-            "Tous les élèves",
-            "Élèves non soldés uniquement",
-            "Non payés",
-            "Partiellement payés",
-            "Soldés",
-        ])
+        self.combo_statut.addItems([STATUT_SOLDE, STATUT_PARTIEL, STATUT_NON_PAYE])
         self.combo_statut.currentTextChanged.connect(self._remplir_tableau)
         filtres.addWidget(self.combo_statut)
 
@@ -246,17 +243,9 @@ class TableauDeBord(QWidget):
 
         tous = eleve_service.lister_eleves()
 
-        # Application du filtre par statut
-        if choix_statut == "Élèves non soldés uniquement":
-            eleves = [e for e in tous if e["statut"] != "Soldé"]
-        elif choix_statut == "Non payés":
-            eleves = [e for e in tous if e["statut"] == "Non payé"]
-        elif choix_statut == "Partiellement payés":
-            eleves = [e for e in tous if e["statut"] == "Partiellement payé"]
-        elif choix_statut == "Soldés":
-            eleves = [e for e in tous if e["statut"] == "Soldé"]
-        else:
-            eleves = tous
+        # Application du filtre par statut : le libellé choisi dans le menu
+        # correspond exactement à la valeur du statut de l'élève
+        eleves = [e for e in tous if e["statut"] == choix_statut]
 
         # Application du filtre texte
         if terme:
