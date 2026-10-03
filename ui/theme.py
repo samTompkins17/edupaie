@@ -79,13 +79,6 @@ COULEUR_STATUT = {
     "Non payé": PALETTE["danger"],
 }
 
-#: Fond doux associé à chaque statut (badges/pastilles)
-FOND_STATUT = {
-    "Soldé": PALETTE["successBg"],
-    "Partiellement payé": PALETTE["warningBg"],
-    "Non payé": PALETTE["dangerBg"],
-}
-
 FAMILLE_POLICE = '"Segoe UI", "Inter", "Noto Sans", Arial, sans-serif'
 
 
