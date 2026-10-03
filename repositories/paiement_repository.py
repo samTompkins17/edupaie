@@ -89,16 +89,21 @@ def obtenir_par_id(id_paiement: int) -> dict | None:
         conn.close()
 
 
-def somme_paiements(id_eleve: int) -> int:
+def somme_paiements(id_eleve: int,
+                    conn: sqlite3.Connection | None = None) -> int:
     """Retourne la somme totale des paiements d'un élève.
 
     Args:
         id_eleve: Identifiant de l'élève
+        conn: Connexion existante optionnelle (transaction)
 
     Returns:
         Somme en FCFA (0 si aucun paiement)
     """
-    conn = get_connection()
+    fermer = False
+    if conn is None:
+        conn = get_connection()
+        fermer = True
     try:
         curseur = conn.execute(
             "SELECT COALESCE(SUM(montant), 0) AS total "
@@ -107,23 +112,8 @@ def somme_paiements(id_eleve: int) -> int:
         )
         return curseur.fetchone()["total"]
     finally:
-        conn.close()
-
-
-def total_encaisse() -> int:
-    """Retourne la somme totale de tous les paiements (tous élèves confondus).
-
-    Returns:
-        Montant total encaissé en FCFA
-    """
-    conn = get_connection()
-    try:
-        curseur = conn.execute(
-            "SELECT COALESCE(SUM(montant), 0) AS total FROM paiement"
-        )
-        return curseur.fetchone()["total"]
-    finally:
-        conn.close()
+        if fermer:
+            conn.close()
 
 
 def compter_par_eleve(id_eleve: int) -> int:
@@ -165,9 +155,13 @@ def dernier_numero_recu(annee: str,
         fermer = True
 
     try:
+        # Tri numérique sur le compteur (après le préfixe "REC-AAAA-" = 9 car.)
+        # pour éviter que REC-2028-9999 passe devant REC-2028-10000
         curseur = conn.execute(
-            "SELECT MAX(numero_recu) AS dernier FROM paiement "
-            "WHERE numero_recu LIKE ?",
+            "SELECT numero_recu AS dernier FROM paiement "
+            "WHERE numero_recu LIKE ? "
+            "ORDER BY CAST(substr(numero_recu, 10) AS INTEGER) DESC "
+            "LIMIT 1",
             (f"REC-{annee}-%",),
         )
         resultat = curseur.fetchone()

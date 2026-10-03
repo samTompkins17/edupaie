@@ -14,11 +14,15 @@ Vérifie l'ensemble des règles métier critiques et critères d'acceptation :
 
 import unittest
 import os
+import sqlite3
 import tempfile
+import time
+from datetime import date, timedelta
 from unittest.mock import patch
 
 from db.connection import get_connection
 from db.seed import reinitialiser_base
+from repositories import eleve_repository
 from services import eleve_service, paiement_service, recu_service
 from receipts import pdf_generator
 
@@ -93,13 +97,19 @@ class TestEduPaie(unittest.TestCase):
         """Vérifie le format séquentiel REC-AAAA-NNNN et l'unicité."""
         num = recu_service.generer_numero_recu("2026")
         self.assertTrue(num.startswith("REC-2026-"))
-        self.assertEqual(len(num), 13)
+        # Le numéro doit avoir au minimum 4 chiffres (format REC-AAAA-NNNN)
+        compteur = num.split("-")[2]
+        self.assertGreaterEqual(len(compteur), 4)
 
     def test_06_refus_suppression_eleve_avec_paiements(self):
         """Vérifie qu'un élève ayant des versements ne peut pas être supprimé."""
         with self.assertRaises(ValueError) as ctx:
             eleve_service.supprimer_eleve(1)
         self.assertIn("Impossible de supprimer cet élève", str(ctx.exception))
+        self.assertIn(
+            "Un élève ayant des paiements ne peut pas être supprimé afin de conserver l'historique des reçus.",
+            str(ctx.exception),
+        )
 
     def test_07_suppression_eleve_sans_paiement(self):
         """Vérifie qu'un élève sans versement peut être ajouté puis supprimé sans erreur."""
@@ -132,6 +142,478 @@ class TestEduPaie(unittest.TestCase):
         self.assertEqual(stats["nombre_soldes"], 6)
         self.assertEqual(stats["nombre_partiellement_payes"], 7)
         self.assertEqual(stats["nombre_non_payes"], 5)
+
+    def test_10_numerotation_au_dela_9999(self):
+        """Vérifie que la numérotation fonctionne au-delà de 9999 reçus/an.
+
+        Insère directement REC-2028-9999, puis vérifie que le suivant est
+        REC-2028-10000, l'insère, et vérifie que le suivant est REC-2028-10001.
+        """
+        conn = get_connection()
+        id_tmp = None
+        try:
+            # Créer un élève temporaire pour ce test
+            curseur = conn.execute(
+                "INSERT INTO eleve (nom, prenom, classe, annee_scolaire, total_du) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("TEST_NUM", "Temporaire", "6ème", "2028-2029", 9000000),
+            )
+            id_tmp = curseur.lastrowid
+
+            # Insérer un paiement avec le numéro REC-2028-9999
+            conn.execute(
+                "INSERT INTO paiement (id_eleve, montant, date_paiement, "
+                "mode_paiement, numero_recu, solde_apres) VALUES (?,?,?,?,?,?)",
+                (id_tmp, 1000, "2028-09-01", "especes", "REC-2028-9999", 8999000),
+            )
+            conn.commit()
+
+            # Le prochain numéro doit être REC-2028-10000
+            suivant = recu_service.generer_numero_recu("2028")
+            self.assertEqual(suivant, "REC-2028-10000")
+
+            # Insérer ce numéro pour vérifier la séquence suivante
+            conn.execute(
+                "INSERT INTO paiement (id_eleve, montant, date_paiement, "
+                "mode_paiement, numero_recu, solde_apres) VALUES (?,?,?,?,?,?)",
+                (id_tmp, 1000, "2028-09-02", "especes", "REC-2028-10000", 8998000),
+            )
+            conn.commit()
+
+            # Le prochain doit être REC-2028-10001
+            suivant2 = recu_service.generer_numero_recu("2028")
+            self.assertEqual(suivant2, "REC-2028-10001")
+        finally:
+            # Nettoyage : supprimer les paiements puis l'élève de test
+            # (garde-fou : rien à nettoyer si l'élève n'a pas été créé)
+            if id_tmp is not None:
+                conn.execute("DELETE FROM paiement WHERE id_eleve = ?", (id_tmp,))
+                conn.execute("DELETE FROM eleve WHERE id_eleve = ?", (id_tmp,))
+                conn.commit()
+            conn.close()
+
+    def test_11_validation_dates_paiement(self):
+        """Vérifie le contrôle des dates de versement (F3 / fix dates-paiement).
+
+        - Date future refusée
+        - Date 1900 refusée (antérieure au 01/01 de l'année scolaire)
+        - Date du jour acceptée
+        """
+        # Élève 3 (COULIBALY Fatou, 2025-2026, solde restant > 0)
+        aujourdhui = date.today()
+        date_future = (aujourdhui + timedelta(days=1)).isoformat()
+        date_1900 = "1900-01-01"
+        date_du_jour = aujourdhui.isoformat()
+
+        # 1. Date future -> refusée
+        with self.assertRaises(ValueError) as ctx:
+            paiement_service.enregistrer_paiement(3, 5000, date_future, "especes")
+        self.assertIn("postérieure à la date du jour", str(ctx.exception))
+
+        # 2. Date 1900 -> refusée
+        with self.assertRaises(ValueError) as ctx:
+            paiement_service.enregistrer_paiement(3, 5000, date_1900, "especes")
+        self.assertIn("antérieure au 1er janvier de la première année scolaire", str(ctx.exception))
+
+        # 3. Date du jour -> acceptée
+        res = paiement_service.enregistrer_paiement(3, 5000, date_du_jour, "especes")
+        self.assertIsNotNone(res["id_paiement"])
+        self.assertEqual(res["date_paiement"], date_du_jour)
+
+    def test_12_decouplage_couches(self):
+        """Vérifie le respect strict du découpage en couches (refactor/couches).
+
+        - utils.formatage exporte les utilitaires indépendamment de UI
+        - eleve_repository.obtenir_total_du fonctionne avec/sans connexion
+        - Aucune dépendance 'from ui' ou 'import ui' dans services, receipts, db, utils
+        """
+        from utils.formatage import (
+            formater_montant,
+            formater_date_affichage,
+            libelle_mode_paiement,
+        )
+
+        self.assertEqual(formater_montant(10000), "10 000 FCFA")
+        self.assertEqual(formater_date_affichage("2026-03-30"), "30/03/2026")
+        self.assertEqual(libelle_mode_paiement("mobile_money"), "Mobile Money")
+
+        # Repository obtenir_total_du
+        total_du = eleve_repository.obtenir_total_du(1)
+        self.assertEqual(total_du, 250000)
+
+        # Vérification qu'aucun fichier hors ui n'importe ui
+        racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        dossiers_interdits = ["services", "receipts", "repositories", "db", "utils"]
+        for dossier in dossiers_interdits:
+            chemin_dossier = os.path.join(racine, dossier)
+            if not os.path.isdir(chemin_dossier):
+                continue
+            for nom_fic in os.listdir(chemin_dossier):
+                if nom_fic.endswith(".py"):
+                    with open(os.path.join(chemin_dossier, nom_fic), "r", encoding="utf-8") as f:
+                        contenu = f.read()
+                        self.assertNotIn(
+                            "from ui",
+                            contenu,
+                            f"{nom_fic} dans {dossier} ne doit pas importer depuis ui",
+                        )
+                        self.assertNotIn(
+                            "import ui",
+                            contenu,
+                            f"{nom_fic} dans {dossier} ne doit pas importer ui",
+                        )
+
+
+    def test_13_performance_liste_eleves(self):
+        """Vérifie les performances avec 2 000 élèves / 12 000 paiements (perf/liste-eleves).
+
+        Avant optimisation, lister_eleves exécutait 2 requêtes par élève
+        (problème N+1) : plus de 16 s pour 2 000 élèves. La requête unique
+        avec LEFT JOIN doit répondre en moins de 0,3 s, et les statistiques
+        agrégées en moins de 0,2 s.
+        """
+        # Base isolée dans un dossier temporaire pour ne pas perturber les autres tests
+        with tempfile.TemporaryDirectory() as dossier_temp:
+            with patch("db.connection.get_data_dir", return_value=dossier_temp):
+                reinitialiser_base()
+                conn = get_connection()
+                try:
+                    # 2 000 élèves répartis dans 4 classes, 300 000 FCFA dus chacun
+                    classes = ["6ème", "5ème", "4ème", "3ème"]
+                    eleves = [
+                        (f"NOM_{i:04d}", f"Prenom_{i:04d}", classes[i % 4],
+                         "2025-2026", 300000)
+                        for i in range(1, 2001)
+                    ]
+                    conn.execute("DELETE FROM paiement")
+                    conn.execute("DELETE FROM eleve")
+                    conn.executemany(
+                        "INSERT INTO eleve (nom, prenom, classe, annee_scolaire, "
+                        "total_du) VALUES (?, ?, ?, ?, ?)",
+                        eleves,
+                    )
+                    ids = [r["id_eleve"] for r in conn.execute(
+                        "SELECT id_eleve FROM eleve ORDER BY id_eleve"
+                    ).fetchall()]
+
+                    # 12 000 paiements : 6 versements de 25 000 par élève
+                    modes = ["especes", "cheque", "virement", "mobile_money"]
+                    paiements = [
+                        (ids[(i - 1) % len(ids)], 25000, "2025-10-15",
+                         modes[i % 4], f"REC-2025-{90000 + i:05d}", 150000)
+                        for i in range(1, 12001)
+                    ]
+                    conn.executemany(
+                        "INSERT INTO paiement (id_eleve, montant, date_paiement, "
+                        "mode_paiement, numero_recu, solde_apres) VALUES (?,?,?,?,?,?)",
+                        paiements,
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+
+                # Premiers appels hors mesure : chauffe le cache de la base
+                # (sinon la première requête agrégée paie le coût à froid
+                # et la mesure devient instable d'une exécution à l'autre)
+                eleve_service.lister_eleves()
+                eleve_service.obtenir_statistiques()
+
+                # Mesure de lister_eleves : requête unique, sous 0,3 s
+                t0 = time.perf_counter()
+                resultat = eleve_service.lister_eleves()
+                duree_lister = time.perf_counter() - t0
+                self.assertLess(
+                    duree_lister, 0.3,
+                    f"lister_eleves trop lent : {duree_lister:.3f} s",
+                )
+
+                # Mesure des statistiques : requêtes agrégées, sous 0,2 s
+                t0 = time.perf_counter()
+                stats = eleve_service.obtenir_statistiques()
+                duree_stats = time.perf_counter() - t0
+                self.assertLess(
+                    duree_stats, 0.2,
+                    f"obtenir_statistiques trop lent : {duree_stats:.3f} s",
+                )
+
+                # Mêmes résultats qu'avant optimisation : tri, soldes, statuts
+                self.assertEqual(len(resultat), 2000)
+                premier = resultat[0]
+                self.assertEqual(premier["nom"], "NOM_0001")  # tri alphabétique
+                # 6 versements de 25 000 -> 150 000 payés, solde 150 000
+                self.assertEqual(premier["somme_payee"], 150000)
+                self.assertEqual(premier["solde"], 150000)
+                self.assertEqual(premier["statut"], "Partiellement payé")
+
+                # Filtre par classe : 500 élèves par classe
+                sixiemes = eleve_service.lister_eleves(classe_filtre="6ème")
+                self.assertEqual(len(sixiemes), 500)
+                self.assertTrue(all(e["classe"] == "6ème" for e in sixiemes))
+
+                # Statistiques globales cohérentes avec le jeu de données
+                self.assertEqual(stats["nombre_eleves"], 2000)
+                self.assertEqual(stats["total_encaisse"], 12000 * 25000)
+                self.assertEqual(
+                    stats["total_restant_du"], 2000 * 300000 - 12000 * 25000
+                )
+                self.assertEqual(stats["nombre_partiellement_payes"], 2000)
+
+
+    def test_14_refus_doublon_eleve(self):
+        """Vérifie le refus des doublons (nom, prénom, classe, année scolaire).
+
+        - Ajout refusé si l'élève existe déjà (casse et espaces ignorés)
+        - Modification refusée si elle entre en collision avec un autre élève
+        - Modification de l'élève lui-même autorisée
+        """
+        id_a = eleve_service.ajouter_eleve(
+            nom="DOUBLONTEST", prenom="Alpha", classe="6ème",
+            annee_scolaire="2025-2026", total_du=50000,
+        )
+        id_b = eleve_service.ajouter_eleve(
+            nom="DOUBLONTEST", prenom="Beta", classe="5ème",
+            annee_scolaire="2025-2026", total_du=50000,
+        )
+        try:
+            # 1. Ajout d'un doublon : casse et espaces en trop ignorés
+            with self.assertRaises(ValueError) as ctx:
+                eleve_service.ajouter_eleve(
+                    nom="  doublontest ", prenom=" Alpha ", classe="6ème",
+                    annee_scolaire="2025-2026", total_du=60000,
+                )
+            self.assertIn("doublons sont refusés", str(ctx.exception))
+
+            # 2. Modification d'un autre élève vers les clés du premier
+            with self.assertRaises(ValueError) as ctx:
+                eleve_service.modifier_eleve(
+                    id_b, nom="DOUBLONTEST", prenom="alpha", classe="6ème",
+                    annee_scolaire="2025-2026", total_du=50000,
+                )
+            self.assertIn("doublons sont refusés", str(ctx.exception))
+
+            # 3. Modification de l'élève lui-même (mêmes valeurs) : autorisée
+            eleve_service.modifier_eleve(
+                id_a, nom="DOUBLONTEST", prenom="Alpha", classe="6ème",
+                annee_scolaire="2025-2026", total_du=55000,
+            )
+            self.assertEqual(eleve_service.obtenir_eleve(id_a)["total_du"], 55000)
+        finally:
+            # Nettoyage (aucun paiement -> suppression autorisée)
+            eleve_service.supprimer_eleve(id_a)
+            eleve_service.supprimer_eleve(id_b)
+
+    def test_15_refus_total_du_nul(self):
+        """Vérifie que le total dû doit être strictement supérieur à 0."""
+        # total_du = 0 -> refusé
+        with self.assertRaises(ValueError) as ctx:
+            eleve_service.ajouter_eleve(
+                nom="ZERO", prenom="Test", classe="6ème",
+                annee_scolaire="2025-2026", total_du=0,
+            )
+        self.assertIn("strictement positif", str(ctx.exception))
+
+        # total_du négatif -> toujours refusé
+        with self.assertRaises(ValueError):
+            eleve_service.ajouter_eleve(
+                nom="NEGATIF", prenom="Test", classe="6ème",
+                annee_scolaire="2025-2026", total_du=-100,
+            )
+
+        # Vérification directe de la fonction de validation
+        with self.assertRaises(ValueError):
+            eleve_service.valider_donnees(
+                "ZERO", "Test", "6ème", "2025-2026", 0,
+            )
+
+    def test_16_refus_booleens(self):
+        """Vérifie que True/False sont rejetés pour les montants entiers.
+
+        En Python, True/False sont des int : ils passeraient sinon les
+        contrôles isinstance(x, int).
+        """
+        # Élève : total_du booléen refusé (validation directe et via le service)
+        with self.assertRaises(ValueError):
+            eleve_service.valider_donnees(
+                "BOOLEEN", "Test", "6ème", "2025-2026", True,
+            )
+        with self.assertRaises(ValueError):
+            eleve_service.ajouter_eleve(
+                nom="BOOLEEN", prenom="Test", classe="6ème",
+                annee_scolaire="2025-2026", total_du=False,
+            )
+
+        # Paiement : montant booléen refusé (validation directe et via le service)
+        with self.assertRaises(ValueError):
+            paiement_service.valider_donnees_paiement(
+                3, True, "2026-03-01", "especes",
+            )
+        with self.assertRaises(ValueError):
+            paiement_service.enregistrer_paiement(
+                3, False, "2026-03-01", "especes",
+            )
+
+
+    def test_17_recherche_caracteres_speciaux_et_espaces(self):
+        """Vérifie la recherche littérale (% et _) et l'ignorance des espaces.
+
+        - % et _ doivent être cherchés littéralement (pas comme jokers LIKE)
+        - Les espaces autour du terme sont ignorés : « DIALLO » avec espace
+          final doit trouver comme « DIALLO »
+        """
+        id_pct = eleve_service.ajouter_eleve(
+            nom="TEST%POURCENT", prenom="Special", classe="6ème",
+            annee_scolaire="2025-2026", total_du=50000,
+        )
+        id_us = eleve_service.ajouter_eleve(
+            nom="TEST_UND", prenom="Special", classe="6ème",
+            annee_scolaire="2025-2026", total_du=50000,
+        )
+        try:
+            # 1. % littéral : seul le nom contenant un vrai % correspond
+            #    (avant correctif, le % était un joker qui matchait tout)
+            resultat = eleve_service.lister_eleves(terme="%")
+            self.assertEqual([e["id_eleve"] for e in resultat], [id_pct])
+
+            # 2. _ littéral : seul TEST_UND correspond
+            resultat = eleve_service.lister_eleves(terme="_")
+            self.assertEqual([e["id_eleve"] for e in resultat], [id_us])
+
+            # 3. Espaces autour du terme ignorés
+            resultat = eleve_service.lister_eleves(terme="  DIALLO  ")
+            self.assertTrue(
+                any(e["nom"] == "DIALLO" and e["prenom"] == "Aminata"
+                    for e in resultat),
+                "La recherche « DIALLO » avec espaces doit trouver DIALLO Aminata",
+            )
+
+            # 4. Espace final : même résultat qu'avec le terme seul
+            avec_espace = eleve_service.lister_eleves(terme="TEST%POURCENT ")
+            sans_espace = eleve_service.lister_eleves(terme="TEST%POURCENT")
+            self.assertEqual(
+                [e["id_eleve"] for e in avec_espace],
+                [e["id_eleve"] for e in sans_espace],
+            )
+            self.assertEqual(len(sans_espace), 1)
+        finally:
+            # Nettoyage (aucun paiement -> suppression autorisée)
+            eleve_service.supprimer_eleve(id_pct)
+            eleve_service.supprimer_eleve(id_us)
+
+
+    def test_18_filtre_statuts_tableau_bord(self):
+        """Vérifie que le filtre de statuts du tableau de bord ne propose
+        que les trois statuts réels (Soldé, Partiellement payé, Non payé)."""
+        # Rendu hors écran : exécute l'interface sans fenêtre visible
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+        from ui.dashboard import TableauDeBord
+
+        QApplication.instance() or QApplication([])
+        tableau = TableauDeBord()
+
+        # Le menu contient exactement les trois statuts, dans cet ordre
+        options = [
+            tableau.combo_statut.itemText(i)
+            for i in range(tableau.combo_statut.count())
+        ]
+        self.assertEqual(options, ["Soldé", "Partiellement payé", "Non payé"])
+
+        # Chaque choix affiche uniquement les élèves du statut correspondant
+        stats = eleve_service.obtenir_statistiques()
+        attendus = {
+            "Soldé": stats["nombre_soldes"],
+            "Partiellement payé": stats["nombre_partiellement_payes"],
+            "Non payé": stats["nombre_non_payes"],
+        }
+        for statut, nombre_attendu in attendus.items():
+            tableau.combo_statut.setCurrentIndex(
+                tableau.combo_statut.findText(statut)
+            )
+            self.assertEqual(
+                tableau.tableau.rowCount(), nombre_attendu,
+                f"Le filtre « {statut} » doit afficher {nombre_attendu} élève(s).",
+            )
+            # Chaque ligne affichée porte bien le statut sélectionné
+            for ligne in range(tableau.tableau.rowCount()):
+                self.assertEqual(tableau.tableau.item(ligne, 6).text(), statut)
+
+
+    def test_19_dialogue_paiement_eleve_introuvable(self):
+        """Vérifie que le dialogue de paiement survit à un élève introuvable.
+
+        Avant correctif, _charger_infos_eleve laissait `self.eleve` non
+        défini : la construction du formulaire levait une AttributeError
+        et plantait l'application au lieu d'afficher le message d'erreur.
+        """
+        # Rendu hors écran + QMessageBox simulé (sinon il attend un clic)
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication, QDialog
+        from ui.paiement_dialog import DialoguePaiement
+
+        QApplication.instance() or QApplication([])
+        with patch("ui.paiement_dialog.QMessageBox.critical") as message:
+            dialogue = DialoguePaiement(None, id_eleve=999999)
+
+            # Construction sans exception, message d'erreur affiché
+            self.assertIsNone(dialogue.eleve)
+            message.assert_called_once()
+
+            # Le formulaire inexploitable refuse de s'afficher : annulé
+            self.assertEqual(dialogue.exec(), QDialog.Rejected)
+
+    def test_20_refus_integrite_hors_numero_recu(self):
+        """Vérifie qu'une erreur hors numéro de reçu n'est pas réessayée.
+
+        Avant correctif, TOUTES les sqlite3.IntegrityError déclenchaient
+        3 tentatives, puis un message annonçant à tort un problème de
+        numéro de reçu.
+        """
+        with patch(
+            "repositories.paiement_repository.inserer",
+            side_effect=sqlite3.IntegrityError("FOREIGN KEY constraint failed"),
+        ) as insertion:
+            with self.assertRaises(ValueError) as ctx:
+                paiement_service.enregistrer_paiement(
+                    3, 5000, "2026-03-01", "especes"
+                )
+
+        # Message clair, sans faire porter au numéro de reçu une erreur
+        # qui ne le concerne pas
+        self.assertNotIn("numéro de reçu", str(ctx.exception))
+        # Une seule tentative : réessayer une contrainte échouée ne sert à rien
+        self.assertEqual(insertion.call_count, 1)
+
+    def test_21_annee_scolaire_invalide(self):
+        """Vérifie le message explicite pour une année scolaire inexploitable.
+
+        Avant correctif, le parsing levait une erreur Python brute
+        (« invalid literal for int() ») transmise telle quelle à l'utilisateur.
+        """
+        from utils.formatage import annee_debut_scolaire
+
+        # Cas nominaux : première année extraite du texte
+        self.assertEqual(annee_debut_scolaire("2025-2026"), 2025)
+        self.assertEqual(annee_debut_scolaire("2026"), 2026)
+
+        # Texte non numérique → message clair en français
+        with self.assertRaises(ValueError) as ctx:
+            annee_debut_scolaire("abc-def")
+        self.assertIn("année scolaire", str(ctx.exception))
+
+        # Contrôle en profondeur : paiement pour un élève mal renseigné
+        id_test = eleve_service.ajouter_eleve(
+            nom="ANNEE_BUGUEE", prenom="Test", classe="6ème",
+            annee_scolaire="abc", total_du=100000,
+        )
+        try:
+            with self.assertRaises(ValueError) as ctx:
+                paiement_service.valider_donnees_paiement(
+                    id_test, 5000, "2026-03-01", "especes"
+                )
+            self.assertIn("année scolaire", str(ctx.exception))
+        finally:
+            # Nettoyage (aucun paiement -> suppression autorisée)
+            eleve_service.supprimer_eleve(id_test)
 
 
 if __name__ == "__main__":

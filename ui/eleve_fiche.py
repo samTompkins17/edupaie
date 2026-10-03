@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 from repositories import paiement_repository
 from services import eleve_service
-from ui.theme import COULEUR_STATUT, PALETTE
+from ui.theme import COULEUR_STATUT
 from ui.utils import (
     couleur_statut, formater_date_affichage, formater_montant, initiales,
     libelle_mode_paiement,
@@ -32,7 +32,6 @@ class FicheEleve(QWidget):
 
     # Signaux pour la navigation et les actions
     retour_demande = Signal()
-    nouveau_paiement_demande = Signal(int)  # émet id_eleve
     reimprimer_recu_demande = Signal(int)   # émet id_paiement
 
     def __init__(self, parent=None):
@@ -170,9 +169,41 @@ class FicheEleve(QWidget):
         entete.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         entete.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         entete.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        entete.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        # Colonne « Actions » à largeur fixe : les deux boutons côte à côte
+        # (« Détails » + « Reçu ») avec l'espacement interne du layout.
+        # Évite la troncature des boutons (fix/recherche-et-ui).
+        entete.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        entete.resizeSection(
+            5,
+            self._largeur_bouton("Détails")
+            + self._largeur_bouton("Reçu")
+            + 32,  # 2×6 espacement + 2×6 marges + 8 marge de sécurité
+        )
 
         self.tableau_paiements.doubleClicked.connect(self._sur_double_clic_paiement)
+
+    @staticmethod
+    def _largeur_bouton(texte: str) -> int:
+        """Largeur minimale d'un bouton d'action : texte + marge de confort.
+
+        La mesure se fait avec fontMetrics().horizontalAdvance() sur un
+        bouton témoin, pour s'adapter à la police réellement utilisée.
+        """
+        bouton_temoin = QPushButton(texte)
+        return bouton_temoin.fontMetrics().horizontalAdvance(texte) + 24
+
+    def _bouton_action(self, texte: str) -> QPushButton:
+        """Crée un bouton d'action de l'historique, jamais tronqué.
+
+        La largeur minimale est calculée à partir du texte affiché
+        (largeur du texte + marge), ce qui garantit l'affichage complet.
+        """
+        bouton = QPushButton(texte)
+        bouton.setObjectName("btnIcon")
+        bouton.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Minimum = largeur du texte + marge (padding, bordures)
+        bouton.setMinimumWidth(self._largeur_bouton(texte))
+        return bouton
 
     # ------------------------------------------------------------------
     # Données
@@ -267,23 +298,19 @@ class FicheEleve(QWidget):
                 item_solde.setForeground(QColor(COULEUR_STATUT["Soldé"]))
             self.tableau_paiements.setItem(ligne, 4, item_solde)
 
-            # 5: Boutons d'action (Consulter et Reçu)
+            # 5: Boutons d'action (Consulter et Reçu), jamais tronqués
             widget_actions = QWidget()
             layout_actions = QHBoxLayout(widget_actions)
             layout_actions.setContentsMargins(6, 4, 6, 4)
             layout_actions.setSpacing(6)
 
-            btn_details = QPushButton("Détails")
-            btn_details.setObjectName("btnIcon")
-            btn_details.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_details = self._bouton_action("Détails")
             btn_details.clicked.connect(
                 lambda _, pid=p["id_paiement"]: self._ouvrir_detail_paiement(pid)
             )
             layout_actions.addWidget(btn_details)
 
-            btn_imprimer = QPushButton("Reçu")
-            btn_imprimer.setObjectName("btnIcon")
-            btn_imprimer.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_imprimer = self._bouton_action("Reçu")
             btn_imprimer.clicked.connect(
                 lambda _, pid=p["id_paiement"]: self.reimprimer_recu_demande.emit(pid)
             )

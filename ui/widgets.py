@@ -54,14 +54,6 @@ class CarteKPI(QFrame):
         self.lbl_sous_titre.setVisible(bool(sous_titre))
         colonne.addWidget(self.lbl_sous_titre)
 
-    def maj(self, valeur: str, sous_titre: str | None = None):
-        """Met à jour la valeur et, si fournie, la légende."""
-        self.lbl_valeur.setText(valeur)
-        if sous_titre is not None:
-            self.lbl_sous_titre.setText(sous_titre)
-            self.lbl_sous_titre.setVisible(bool(sous_titre))
-
-
 class EnTetePage(QWidget):
     """En-tête de page : titre, sous-titre et zone d'actions à droite."""
 
@@ -85,9 +77,6 @@ class EnTetePage(QWidget):
 
         self._layout.addLayout(colonne)
         self._layout.addStretch()
-
-    def set_sous_titre(self, texte: str):
-        self.lbl_sous_titre.setText(texte)
 
     def ajouter_action(self, widget: QWidget):
         """Ajoute un widget à droite de l'en-tête."""
