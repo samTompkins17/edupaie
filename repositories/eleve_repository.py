@@ -6,6 +6,7 @@ Aucune logique métier, aucun import PySide6.
 Toutes les requêtes utilisent des paramètres (?) pour la sécurité.
 """
 
+import sqlite3
 from db.connection import get_connection
 
 
@@ -73,16 +74,21 @@ def supprimer(id_eleve: int):
         conn.close()
 
 
-def obtenir_par_id(id_eleve: int) -> dict | None:
+def obtenir_par_id(id_eleve: int,
+                   conn: sqlite3.Connection | None = None) -> dict | None:
     """Retourne un élève sous forme de dictionnaire, ou None s'il n'existe pas.
 
     Args:
         id_eleve: Identifiant de l'élève recherché
+        conn: Connexion existante optionnelle (transaction)
 
     Returns:
         Dictionnaire avec les colonnes de l'élève, ou None
     """
-    conn = get_connection()
+    fermer = False
+    if conn is None:
+        conn = get_connection()
+        fermer = True
     try:
         curseur = conn.execute(
             "SELECT * FROM eleve WHERE id_eleve = ?", (id_eleve,)
@@ -90,24 +96,44 @@ def obtenir_par_id(id_eleve: int) -> dict | None:
         ligne = curseur.fetchone()
         return dict(ligne) if ligne else None
     finally:
-        conn.close()
+        if fermer:
+            conn.close()
 
 
 def obtenir_par_id_avec_conn(id_eleve: int, conn) -> dict | None:
-    """Retourne un élève en utilisant une connexion existante (transaction).
+    """Alias pour obtenir_par_id avec connexion existante."""
+    return obtenir_par_id(id_eleve, conn=conn)
 
-    Même logique que obtenir_par_id, mais participe à la transaction
-    ouverte par la couche service (pas de fermeture de connexion).
+
+def obtenir_total_du(id_eleve: int,
+                     conn: sqlite3.Connection | None = None) -> int:
+    """Retourne le montant total dû pour un élève.
 
     Args:
-        id_eleve: Identifiant de l'élève recherché
-        conn: Connexion SQLite fournie par l'appelant
+        id_eleve: Identifiant de l'élève
+        conn: Connexion existante optionnelle (transaction)
+
+    Returns:
+        Total dû en FCFA
+
+    Raises:
+        ValueError: Si l'élève n'existe pas
     """
-    curseur = conn.execute(
-        "SELECT * FROM eleve WHERE id_eleve = ?", (id_eleve,)
-    )
-    ligne = curseur.fetchone()
-    return dict(ligne) if ligne else None
+    fermer = False
+    if conn is None:
+        conn = get_connection()
+        fermer = True
+    try:
+        curseur = conn.execute(
+            "SELECT total_du FROM eleve WHERE id_eleve = ?", (id_eleve,)
+        )
+        ligne = curseur.fetchone()
+        if not ligne:
+            raise ValueError(f"L'élève #{id_eleve} est introuvable.")
+        return ligne["total_du"]
+    finally:
+        if fermer:
+            conn.close()
 
 
 def rechercher(terme: str = "", classe_filtre: str = "") -> list[dict]:

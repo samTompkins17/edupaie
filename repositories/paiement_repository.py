@@ -89,16 +89,21 @@ def obtenir_par_id(id_paiement: int) -> dict | None:
         conn.close()
 
 
-def somme_paiements(id_eleve: int) -> int:
+def somme_paiements(id_eleve: int,
+                    conn: sqlite3.Connection | None = None) -> int:
     """Retourne la somme totale des paiements d'un élève.
 
     Args:
         id_eleve: Identifiant de l'élève
+        conn: Connexion existante optionnelle (transaction)
 
     Returns:
         Somme en FCFA (0 si aucun paiement)
     """
-    conn = get_connection()
+    fermer = False
+    if conn is None:
+        conn = get_connection()
+        fermer = True
     try:
         curseur = conn.execute(
             "SELECT COALESCE(SUM(montant), 0) AS total "
@@ -107,25 +112,13 @@ def somme_paiements(id_eleve: int) -> int:
         )
         return curseur.fetchone()["total"]
     finally:
-        conn.close()
+        if fermer:
+            conn.close()
 
 
 def somme_paiements_avec_conn(id_eleve: int, conn) -> int:
-    """Retourne la somme des paiements en utilisant une connexion existante.
-
-    Même logique que somme_paiements, mais participe à la transaction
-    ouverte par la couche service (pas de fermeture de connexion).
-
-    Args:
-        id_eleve: Identifiant de l'élève
-        conn: Connexion SQLite fournie par l'appelant
-    """
-    curseur = conn.execute(
-        "SELECT COALESCE(SUM(montant), 0) AS total "
-        "FROM paiement WHERE id_eleve = ?",
-        (id_eleve,),
-    )
-    return curseur.fetchone()["total"]
+    """Alias pour somme_paiements avec connexion existante."""
+    return somme_paiements(id_eleve, conn=conn)
 
 
 def total_encaisse() -> int:
