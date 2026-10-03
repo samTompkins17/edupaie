@@ -8,7 +8,7 @@ Responsabilités :
   de reçu et insertion en base de données au sein d'une même transaction ACID.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 import sqlite3
 
 from db.connection import get_connection
@@ -20,10 +20,10 @@ MODES_PAIEMENT_AUTORISES = ("especes", "cheque", "virement", "mobile_money")
 
 
 def valider_donnees_paiement(id_eleve: int, montant: int, date_paiement: str, mode_paiement: str):
-    """Valide les critères formels d'une saisie de paiement.
+    """Valide les critères formels et temporels d'une saisie de paiement.
 
     Raises:
-        ValueError: Si un paramètre est invalide ou manquant
+        ValueError: Si un paramètre est invalide, date future ou antérieure à l'année scolaire
     """
     if not id_eleve or not isinstance(id_eleve, int):
         raise ValueError("L'élève rattaché au paiement est obligatoire.")
@@ -36,9 +36,34 @@ def valider_donnees_paiement(id_eleve: int, montant: int, date_paiement: str, mo
 
     # Validation du format date (YYYY-MM-DD)
     try:
-        datetime.strptime(date_paiement.strip(), "%Y-%m-%d")
+        date_obj = datetime.strptime(date_paiement.strip(), "%Y-%m-%d").date()
     except ValueError:
         raise ValueError("La date de paiement doit respecter le format AAAA-MM-JJ (ex: 2026-03-30).")
+
+    # Règle : date postérieure à aujourd'hui interdite
+    aujourdhui = date.today()
+    if date_obj > aujourdhui:
+        raise ValueError(
+            f"La date de paiement ne peut pas être postérieure à la date du jour ({aujourdhui.strftime('%d/%m/%Y')})."
+        )
+
+    # Règle : date antérieure au 1er janvier de la première année de l'année scolaire de l'élève interdite
+    eleve = eleve_repository.obtenir_par_id(id_eleve)
+    if not eleve:
+        raise ValueError(f"L'élève #{id_eleve} est introuvable.")
+
+    annee_scolaire = eleve.get("annee_scolaire", "")
+    try:
+        annee_debut = int(annee_scolaire.split("-")[0].strip())
+    except (ValueError, IndexError):
+        annee_debut = int(str(annee_scolaire)[:4])
+
+    date_min = date(annee_debut, 1, 1)
+    if date_obj < date_min:
+        raise ValueError(
+            f"La date de paiement ne peut pas être antérieure au 1er janvier de la première "
+            f"année scolaire de l'élève ({date_min.strftime('%d/%m/%Y')})."
+        )
 
     if not mode_paiement or mode_paiement not in MODES_PAIEMENT_AUTORISES:
         modes_str = ", ".join(MODES_PAIEMENT_AUTORISES)
