@@ -451,5 +451,52 @@ class TestEduPaie(unittest.TestCase):
             )
 
 
+    def test_17_recherche_caracteres_speciaux_et_espaces(self):
+        """Vérifie la recherche littérale (% et _) et l'ignorance des espaces.
+
+        - % et _ doivent être cherchés littéralement (pas comme jokers LIKE)
+        - Les espaces autour du terme sont ignorés : « DIALLO » avec espace
+          final doit trouver comme « DIALLO »
+        """
+        id_pct = eleve_service.ajouter_eleve(
+            nom="TEST%POURCENT", prenom="Special", classe="6ème",
+            annee_scolaire="2025-2026", total_du=50000,
+        )
+        id_us = eleve_service.ajouter_eleve(
+            nom="TEST_UND", prenom="Special", classe="6ème",
+            annee_scolaire="2025-2026", total_du=50000,
+        )
+        try:
+            # 1. % littéral : seul le nom contenant un vrai % correspond
+            #    (avant correctif, le % était un joker qui matchait tout)
+            resultat = eleve_service.lister_eleves(terme="%")
+            self.assertEqual([e["id_eleve"] for e in resultat], [id_pct])
+
+            # 2. _ littéral : seul TEST_UND correspond
+            resultat = eleve_service.lister_eleves(terme="_")
+            self.assertEqual([e["id_eleve"] for e in resultat], [id_us])
+
+            # 3. Espaces autour du terme ignorés
+            resultat = eleve_service.lister_eleves(terme="  DIALLO  ")
+            self.assertTrue(
+                any(e["nom"] == "DIALLO" and e["prenom"] == "Aminata"
+                    for e in resultat),
+                "La recherche « DIALLO » avec espaces doit trouver DIALLO Aminata",
+            )
+
+            # 4. Espace final : même résultat qu'avec le terme seul
+            avec_espace = eleve_service.lister_eleves(terme="TEST%POURCENT ")
+            sans_espace = eleve_service.lister_eleves(terme="TEST%POURCENT")
+            self.assertEqual(
+                [e["id_eleve"] for e in avec_espace],
+                [e["id_eleve"] for e in sans_espace],
+            )
+            self.assertEqual(len(sans_espace), 1)
+        finally:
+            # Nettoyage (aucun paiement -> suppression autorisée)
+            eleve_service.supprimer_eleve(id_pct)
+            eleve_service.supprimer_eleve(id_us)
+
+
 if __name__ == "__main__":
     unittest.main()
