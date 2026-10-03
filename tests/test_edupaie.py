@@ -103,6 +103,10 @@ class TestEduPaie(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             eleve_service.supprimer_eleve(1)
         self.assertIn("Impossible de supprimer cet élève", str(ctx.exception))
+        self.assertIn(
+            "Un élève ayant des paiements ne peut pas être supprimé afin de conserver l'historique des reçus.",
+            str(ctx.exception),
+        )
 
     def test_07_suppression_eleve_sans_paiement(self):
         """Vérifie qu'un élève sans versement peut être ajouté puis supprimé sans erreur."""
