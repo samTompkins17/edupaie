@@ -313,8 +313,11 @@ class TestEduPaie(unittest.TestCase):
                 finally:
                     conn.close()
 
-                # Premier appel hors mesure : chauffe le cache de la base
+                # Premiers appels hors mesure : chauffe le cache de la base
+                # (sinon la première requête agrégée paie le coût à froid
+                # et la mesure devient instable d'une exécution à l'autre)
                 eleve_service.lister_eleves()
+                eleve_service.obtenir_statistiques()
 
                 # Mesure de lister_eleves : requête unique, sous 0,3 s
                 t0 = time.perf_counter()
@@ -496,6 +499,44 @@ class TestEduPaie(unittest.TestCase):
             # Nettoyage (aucun paiement -> suppression autorisée)
             eleve_service.supprimer_eleve(id_pct)
             eleve_service.supprimer_eleve(id_us)
+
+
+    def test_18_filtre_statuts_tableau_bord(self):
+        """Vérifie que le filtre de statuts du tableau de bord ne propose
+        que les trois statuts réels (Soldé, Partiellement payé, Non payé)."""
+        # Rendu hors écran : exécute l'interface sans fenêtre visible
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+        from ui.dashboard import TableauDeBord
+
+        QApplication.instance() or QApplication([])
+        tableau = TableauDeBord()
+
+        # Le menu contient exactement les trois statuts, dans cet ordre
+        options = [
+            tableau.combo_statut.itemText(i)
+            for i in range(tableau.combo_statut.count())
+        ]
+        self.assertEqual(options, ["Soldé", "Partiellement payé", "Non payé"])
+
+        # Chaque choix affiche uniquement les élèves du statut correspondant
+        stats = eleve_service.obtenir_statistiques()
+        attendus = {
+            "Soldé": stats["nombre_soldes"],
+            "Partiellement payé": stats["nombre_partiellement_payes"],
+            "Non payé": stats["nombre_non_payes"],
+        }
+        for statut, nombre_attendu in attendus.items():
+            tableau.combo_statut.setCurrentIndex(
+                tableau.combo_statut.findText(statut)
+            )
+            self.assertEqual(
+                tableau.tableau.rowCount(), nombre_attendu,
+                f"Le filtre « {statut} » doit afficher {nombre_attendu} élève(s).",
+            )
+            # Chaque ligne affichée porte bien le statut sélectionné
+            for ligne in range(tableau.tableau.rowCount()):
+                self.assertEqual(tableau.tableau.item(ligne, 6).text(), statut)
 
 
 if __name__ == "__main__":
