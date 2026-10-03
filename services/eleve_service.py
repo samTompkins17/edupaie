@@ -105,7 +105,8 @@ def supprimer_eleve(id_eleve: int):
     if nombre_paiements > 0:
         raise ValueError(
             f"Impossible de supprimer cet élève : il a {nombre_paiements} "
-            "paiement(s) enregistré(s). Supprimez d'abord ses paiements."
+            "paiement(s) enregistré(s). Un élève ayant des paiements ne peut pas "
+            "être supprimé afin de conserver l'historique des reçus."
         )
     eleve_repository.supprimer(id_eleve)
 
