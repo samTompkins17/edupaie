@@ -149,14 +149,6 @@ Les installateurs sont créés dans `output/` : `EduPaie-Setup-1.0.0.exe` pour l
 
 L’installateur n’étant pas signé numériquement, Windows SmartScreen peut afficher « Éditeur inconnu » : choisir *Informations complémentaires*, puis *Exécuter quand même*.
 
-## Limites connues
-
-- Application mono-poste : pas de partage de la base entre plusieurs ordinateurs.
-- Pas d’authentification : toute personne qui ouvre l’application a accès aux données.
-- Pas de sauvegarde intégrée : la base est un fichier local (`%APPDATA%\EduPaie\edupaie.db`) à copier régulièrement.
-- Pas d’annulation ni de correction d’un paiement déjà enregistré.
-- Classes proposées limitées à la 6ème – 3ème ; nom de l’établissement fixe sur le reçu.
-
 ## Workflow Git
 
 - `main` : version stable.
