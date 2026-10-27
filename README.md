@@ -70,13 +70,7 @@ La suite couvre notamment les clés étrangères, le calcul du solde et des stat
 
 ## Documentation
 
-Le dossier `docs/` contient les livrables du projet :
-
-- `docs/Documentation_EduPaie.docx` : documentation technique (architecture, choix techniques, limites connues).
-- `docs/Manuel_utilisateur_EduPaie.docx` : manuel utilisateur d’une page.
-- `docs/Schema_base_de_donnees_EduPaie.docx` : MCD, MLD, dictionnaire de données et script SQL.
-- `docs/schema/` : sources du MCD et du MLD (`mcd.mmd`, `mld.mmd`, `mcd.dot`, `mld.dot`) et images exportées.
-- `docs/captures/` : captures d’écran de l’application.
+Le dossier `docs/` contient les capture des differents interface du projet
 
 Le script SQL de création des tables est `db/schema.sql`.
 
@@ -95,7 +89,7 @@ Le code est réparti par rôle : `ui/` contient les écrans, `services/` les rè
 ├── resources/              # Logos et icônes
 ├── tests/                  # Tests automatisés
 ├── tools/                  # Build installateur, capture, smoke-test, assets
-├── docs/                   # Documentation, schéma, captures
+├── docs/                   # Schéma, captures
 ├── data/                   # Base SQLite de démonstration
 ├── EduPaie.spec            # Configuration PyInstaller
 ├── build.bat               # Tests et build sous Windows (PowerShell, cmd)
